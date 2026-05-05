@@ -738,18 +738,26 @@ window.VelaCarto = {
         }
       });
 
-      const arrowSVG = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
-          <polygon points="0,0 24,12 0,24" fill="white" fill-opacity="0.7"/>
-        </svg>`;
-
-      const arrowBlob = new Blob([arrowSVG], {
-        type: "image/svg+xml"
-      });
-
-      const arrowURL = URL.createObjectURL(arrowBlob);
-      const arrowImage = await map.loadImage(arrowURL);
-      map.addImage("arrow", arrowImage.data);
+      
+      const arrowCanvas = document.createElement("canvas");
+      arrowCanvas.width = 24;
+      arrowCanvas.height = 24;
+      
+      const arrowCtx = arrowCanvas.getContext("2d");
+      arrowCtx.clearRect(0, 0, 24, 24);
+      arrowCtx.fillStyle = "rgba(255,255,255,0.7)";
+      arrowCtx.beginPath();
+      arrowCtx.moveTo(0, 0);
+      arrowCtx.lineTo(24, 12);
+      arrowCtx.lineTo(0, 24);
+      arrowCtx.closePath();
+      arrowCtx.fill();
+      
+      const arrowImageData = arrowCtx.getImageData(0, 0, 24, 24);
+      
+      if (!map.hasImage("arrow")) {
+        map.addImage("arrow", arrowImageData);
+      }
 
       const arrowFeatures = [];
       const coords = extraTraceGeoJSON.geometry.coordinates;
