@@ -1,47 +1,154 @@
 window.VelaCarto = {
-  init: function(options = {}) {
+  init: async function(options = {}) {
     const mode = options.mode || "full";
     const isMini = mode === "mini";
 
     maptilersdk.config.apiKey = "OGxkSige7vgEEaQoKmhu";
 
     /* ===================== TRACK ===================== */
-    const csvUrl = "https://raw.githubusercontent.com/velalabasso/zopa/refs/heads/main/track_velalab.csv";
+/*
+  On charge maintenant :
+  1. track_velalab.csv à la racine du dépôt
+  2. tous les fichiers .csv trouvés dans nmea_logs/
+  3. on fusionne tous les points
+  4. on trie par timestamp
+*/
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("GET", csvUrl, false); // SYNCHRONE pour garder ton code intact
-    xhr.send(null);
+const repoOwner = "velalabasso";
+const repoName = "zopa";
+const branch = "main";
 
-    const lines = xhr.responseText.trim().split("\n");
+const mainTrackUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/track_velalab.csv`;
+const githubTreeUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/git/trees/${branch}?recursive=1`;
 
-    // Supprimer header
+async function fetchText(url) {
+  const response = await fetch(url, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(`Impossible de charger : ${url}`);
+  }
+
+  return await response.text();
+}
+
+function parseTrackCSV(csvText) {
+  const lines = csvText
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  // Supprimer header si présent
+  if (
+    lines.length &&
+    lines[0].toLowerCase().includes("longitude") &&
+    lines[0].toLowerCase().includes("latitude")
+  ) {
     lines.shift();
+  }
 
-    const coordinates = [];
-    const timestamps = [];
-
-    lines.forEach(line => {
+  return lines
+    .map(line => {
       const cleaned = line.replace(/"/g, "").split(";");
+
       const lon = parseFloat(cleaned[0]);
       const lat = parseFloat(cleaned[1]);
       const time = cleaned[2];
 
-      coordinates.push([lon, lat]);
-      timestamps.push(time);
+      return {
+        lon,
+        lat,
+        time
+      };
+    })
+    .filter(point =>
+      Number.isFinite(point.lon) &&
+      Number.isFinite(point.lat) &&
+      point.time
+    );
+}
+
+async function getNmeaCsvUrls() {
+  const response = await fetch(githubTreeUrl, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Impossible de lire le dossier nmea_logs sur GitHub.");
+  }
+
+  const data = await response.json();
+
+  return data.tree
+    .filter(item =>
+      item.type === "blob" &&
+      item.path.startsWith("nmea_logs/") &&
+      item.path.toLowerCase().endsWith(".csv")
+    )
+    .map(item => {
+      const encodedPath = item.path
+        .split("/")
+        .map(part => encodeURIComponent(part))
+        .join("/");
+
+      return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/${encodedPath}`;
     });
+}
 
-    const trackGeoJSON = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: coordinates
-      },
-      properties: {
-        timestamps: timestamps
-      }
-    };
+// Charger track_velalab.csv
+const mainTrackText = await fetchText(mainTrackUrl);
+const mainTrackPoints = parseTrackCSV(mainTrackText);
 
-    const lastCoord = trackGeoJSON.geometry.coordinates.at(-1);
+// Charger tous les CSV dans nmea_logs/
+const nmeaCsvUrls = await getNmeaCsvUrls();
+
+const nmeaTrackTexts = await Promise.all(
+  nmeaCsvUrls.map(url => fetchText(url))
+);
+
+const nmeaTrackPoints = nmeaTrackTexts.flatMap(csvText =>
+  parseTrackCSV(csvText)
+);
+
+// Fusion track_velalab + nmea_logs
+const allPoints = [
+  ...mainTrackPoints,
+  ...nmeaTrackPoints
+];
+
+// Supprimer les doublons éventuels
+const uniquePointsMap = new Map();
+
+allPoints.forEach(point => {
+  const key = `${point.time}_${point.lon}_${point.lat}`;
+  uniquePointsMap.set(key, point);
+});
+
+const mergedPoints = Array.from(uniquePointsMap.values());
+
+// Trier par timestamp
+mergedPoints.sort((a, b) => {
+  return new Date(a.time).getTime() - new Date(b.time).getTime();
+});
+
+const coordinates = mergedPoints.map(point => [point.lon, point.lat]);
+const timestamps = mergedPoints.map(point => point.time);
+
+const trackGeoJSON = {
+  type: "Feature",
+  geometry: {
+    type: "LineString",
+    coordinates: coordinates
+  },
+  properties: {
+    timestamps: timestamps
+  }
+};
+
+const lastCoord = trackGeoJSON.geometry.coordinates.at(-1);
+
+console.log(
+  `Trace Vela Lab chargée : ${coordinates.length} points au total, dont ${nmeaCsvUrls.length} fichier(s) CSV depuis nmea_logs.`
+);
 
     /* ===================== MAP ===================== */
     const map = new maptilersdk.Map({
