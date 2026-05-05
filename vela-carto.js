@@ -5,16 +5,7 @@ window.VelaCarto = {
 
     maptilersdk.config.apiKey = "OGxkSige7vgEEaQoKmhu";
 
-    /* ===================== TRACK ===================== */
-    /*
-      Charge :
-      1. track_velalab.csv depuis GitHub
-      2. uniquement les fichiers .csv valides dans nmea_logs/
-      3. fusionne par timestamp :
-         - track_velalab.csv est prioritaire
-         - les fichiers nmea_logs ajoutent les timestamps absents
-      4. trie chronologiquement
-    */
+    /* ===================== CONFIG GITHUB ===================== */
 
     const repoOwner = "velalabasso";
     const repoName = "zopa";
@@ -58,6 +49,8 @@ window.VelaCarto = {
         return "";
       }
     }
+
+    /* ===================== OUTILS CSV ===================== */
 
     function splitCSVLine(line, delimiter) {
       const result = [];
@@ -130,6 +123,17 @@ window.VelaCarto = {
       );
     }
 
+    function parseNumber(value) {
+      if (value === undefined || value === null) return NaN;
+
+      return parseFloat(
+        String(value)
+          .trim()
+          .replace(/^"|"$/g, "")
+          .replace(",", ".")
+      );
+    }
+
     function parseTimestamp(value) {
       if (!value) return null;
 
@@ -156,17 +160,6 @@ window.VelaCarto = {
         ms: date.getTime(),
         iso: date.toISOString()
       };
-    }
-
-    function parseNumber(value) {
-      if (value === undefined || value === null) return NaN;
-
-      return parseFloat(
-        String(value)
-          .trim()
-          .replace(/^"|"$/g, "")
-          .replace(",", ".")
-      );
     }
 
     function parseTrackCSV(csvText, sourceName = "csv") {
@@ -216,7 +209,7 @@ window.VelaCarto = {
       if (hasCorrectHeader) {
         dataLines = lines.slice(1);
       } else {
-        // Sécurité : autorise aussi un fichier sans header du type :
+        // Sécurité pour un fichier sans header :
         // longitude ; latitude ; timestamp
         lonIndex = 0;
         latIndex = 1;
@@ -265,20 +258,46 @@ window.VelaCarto = {
           point.lon <= 180 &&
           point.lat >= -90 &&
           point.lat <= 90
-        );
+        )
+        .sort((a, b) => a.timestampMs - b.timestampMs);
 
       console.log("CSV parsé :", sourceName, "=>", points.length, "points");
 
       return points;
     }
 
-    async function getNmeaCsvUrls() {
+    function pointsToLineFeature(points, sourceName) {
+      if (!points.length) return null;
+
+      let coordinates = points.map(point => [point.lon, point.lat]);
+
+      if (coordinates.length === 1) {
+        coordinates = [coordinates[0], coordinates[0]];
+      }
+
+      return {
+        type: "Feature",
+        properties: {
+          source: sourceName,
+          timestamps: points.map(point => point.time)
+        },
+        geometry: {
+          type: "LineString",
+          coordinates: coordinates
+        }
+      };
+    }
+
+    async function getNmeaCsvInfos() {
       try {
         const response = await fetch(githubTreeUrl, { cache: "no-store" });
 
         if (!response.ok) {
           console.warn("Impossible de lire automatiquement nmea_logs. Utilisation du fichier de secours.");
-          return fallbackNmeaCsvPaths.map(path => githubRawUrl(path));
+          return fallbackNmeaCsvPaths.map(path => ({
+            path,
+            url: githubRawUrl(path)
+          }));
         }
 
         const data = await response.json();
@@ -310,95 +329,95 @@ window.VelaCarto = {
           ...fallbackNmeaCsvPaths
         ]));
 
-        return allPaths.map(path => githubRawUrl(path));
+        return allPaths.map(path => ({
+          path,
+          url: githubRawUrl(path)
+        }));
 
       } catch (error) {
         console.warn("Erreur GitHub API :", error);
-        return fallbackNmeaCsvPaths.map(path => githubRawUrl(path));
+
+        return fallbackNmeaCsvPaths.map(path => ({
+          path,
+          url: githubRawUrl(path)
+        }));
       }
     }
 
+    /* ===================== CHARGEMENT TRACK PRINCIPALE ===================== */
+
     const mainTrackUrl = githubRawUrl(mainTrackPath);
     const mainTrackText = await fetchText(mainTrackUrl);
-    const mainTrackPoints = parseTrackCSV(mainTrackText, "track_velalab.csv");
+    const mainTrackPoints = parseTrackCSV(mainTrackText, mainTrackPath);
 
-    const nmeaCsvUrls = await getNmeaCsvUrls();
+    const mainTrackFeature = pointsToLineFeature(mainTrackPoints, mainTrackPath);
+
+    const mainTrackGeoJSON = {
+      type: "FeatureCollection",
+      features: mainTrackFeature ? [mainTrackFeature] : []
+    };
+
+    /* ===================== CHARGEMENT NMEA LOGS CSV ===================== */
+
+    const nmeaCsvInfos = await getNmeaCsvInfos();
 
     const nmeaTrackResults = await Promise.all(
-      nmeaCsvUrls.map(async url => {
-        const text = await fetchText(url);
-        const points = parseTrackCSV(text, url);
+      nmeaCsvInfos.map(async info => {
+        const text = await fetchText(info.url);
+        const points = parseTrackCSV(text, info.path);
 
         return {
-          url,
+          path: info.path,
+          url: info.url,
           points
         };
       })
     );
 
-    const nmeaTrackPoints = nmeaTrackResults.flatMap(result => result.points);
+    const nmeaFeatures = nmeaTrackResults
+      .map(result => pointsToLineFeature(result.points, result.path))
+      .filter(Boolean);
 
-    const pointsByTimestamp = new Map();
-
-    mainTrackPoints.forEach(point => {
-      const key = Math.round(point.timestampMs / 1000);
-      pointsByTimestamp.set(key, point);
-    });
-
-    nmeaTrackPoints.forEach(point => {
-      const key = Math.round(point.timestampMs / 1000);
-
-      if (!pointsByTimestamp.has(key)) {
-        pointsByTimestamp.set(key, point);
-      }
-    });
-
-    const mergedPoints = Array.from(pointsByTimestamp.values())
-      .sort((a, b) => a.timestampMs - b.timestampMs);
-
-    let coordinates = mergedPoints.map(point => [point.lon, point.lat]);
-    let timestamps = mergedPoints.map(point => point.time);
-
-    if (!coordinates.length) {
-      coordinates = [fallbackCenter];
-      timestamps = ["Aucune donnée GPS chargée"];
-    }
-
-    if (coordinates.length === 1) {
-      coordinates = [coordinates[0], coordinates[0]];
-      timestamps = [timestamps[0], timestamps[0]];
-    }
-
-    const trackGeoJSON = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: coordinates
-      },
-      properties: {
-        timestamps: timestamps
-      }
+    const nmeaTrackGeoJSON = {
+      type: "FeatureCollection",
+      features: nmeaFeatures
     };
 
-    const lastCoord = coordinates[coordinates.length - 1];
+    const nmeaTrackPoints = nmeaTrackResults.flatMap(result => result.points);
+
+    /* ===================== TIMELINE POUR LE MARQUEUR ===================== */
+
+    const timelinePoints = [
+      ...mainTrackPoints,
+      ...nmeaTrackPoints
+    ].sort((a, b) => a.timestampMs - b.timestampMs);
+
+    const lastPoint = timelinePoints.length
+      ? timelinePoints[timelinePoints.length - 1]
+      : null;
+
+    const lastCoord = lastPoint
+      ? [lastPoint.lon, lastPoint.lat]
+      : fallbackCenter;
 
     console.log("===== VELA CARTO DEBUG =====");
     console.log("URL track principale :", mainTrackUrl);
     console.log("Points track_velalab.csv :", mainTrackPoints.length);
-    console.log("Fichiers CSV NMEA trouvés :", nmeaCsvUrls);
+    console.log("Fichiers CSV NMEA trouvés :", nmeaCsvInfos.map(info => info.path));
     console.table(
       nmeaTrackResults.map(result => ({
-        url: result.url,
+        fichier: result.path,
         points: result.points.length
       }))
     );
+    console.log("Nombre de traces NMEA affichées :", nmeaFeatures.length);
     console.log("Points NMEA :", nmeaTrackPoints.length);
-    console.log("Points fusionnés :", coordinates.length);
     console.log("Dernier point affiché :", lastCoord);
-    console.log("Dernier timestamp :", timestamps[timestamps.length - 1]);
+    console.log("Dernier timestamp :", lastPoint ? lastPoint.time : "Aucune donnée GPS");
     console.log("============================");
 
     /* ===================== MAP ===================== */
+
     const map = new maptilersdk.Map({
       container: "map",
       style: maptilersdk.MapStyle.BACKDROP,
@@ -407,6 +426,7 @@ window.VelaCarto = {
     });
 
     /* ===================== WIND LAYER ===================== */
+
     const customColoramp = new maptilerweather.ColorRamp({
       stops: [
         { value: 0, color: [98,113,183,255] },
@@ -437,6 +457,7 @@ window.VelaCarto = {
     });
 
     /* ===================== UI ===================== */
+
     const variableName = document.getElementById("variable-name");
     const pointerData = document.getElementById("pointer-data");
     const slider = document.getElementById("time-slider");
@@ -444,7 +465,7 @@ window.VelaCarto = {
     const legend = document.getElementById("legend");
 
     if (slider) {
-      slider.max = Math.max(trackGeoJSON.geometry.coordinates.length - 1, 0);
+      slider.max = Math.max(timelinePoints.length - 1, 0);
     }
 
     if (isMini) {
@@ -475,60 +496,84 @@ window.VelaCarto = {
       if (pointerData) pointerData.innerText = "";
     });
 
+    let boatMarker = null;
+
     /* ===================== LOAD ===================== */
+
     map.on("load", async () => {
-      if (map.getLayer("Water")) {
-        map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
-        map.addLayer(windLayer, "Water");
-      } else {
-        map.addLayer(windLayer);
+      try {
+        if (map.getLayer("Water")) {
+          map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
+          map.addLayer(windLayer, "Water");
+        } else {
+          map.addLayer(windLayer);
+        }
+      } catch (error) {
+        console.warn("Impossible d'ajouter la couche vent :", error);
       }
 
-      map.addSource("track", {
+      /* ===================== TRACE TRACK PRINCIPALE ===================== */
+
+      map.addSource("main-track", {
         type: "geojson",
-        data: trackGeoJSON
+        data: mainTrackGeoJSON
       });
 
       map.addLayer({
-        id: "track-line",
+        id: "main-track-line",
         type: "line",
-        source: "track",
+        source: "main-track",
         layout: {
           "line-join": "round",
           "line-cap": "round"
         },
         paint: {
           "line-color": "#ffffff",
-          "line-width": isMini ? 2 : 3
+          "line-width": isMini ? 2 : 3,
+          "line-opacity": 1
         }
       });
 
-      const image = await map.loadImage("https://static.wixstatic.com/media/7feff5_ab13f48be41c4214b141c562efbbb948~mv2.png");
-      map.addImage("cat", image.data);
+      /* ===================== TRACE NMEA LOGS CSV ===================== */
 
-      map.addSource("point", {
+      map.addSource("nmea-tracks", {
         type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: lastCoord
-          }
-        }
+        data: nmeaTrackGeoJSON
       });
 
       map.addLayer({
-        id: "point",
-        type: "symbol",
-        source: "point",
+        id: "nmea-tracks-line",
+        type: "line",
+        source: "nmea-tracks",
         layout: {
-          "icon-image": "cat",
-          "icon-size": isMini ? 0.11 : 0.15,
-          "icon-allow-overlap": true
+          "line-join": "round",
+          "line-cap": "round"
+        },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": isMini ? 2 : 3,
+          "line-opacity": 0.85
         }
       });
 
+      /* ===================== MARQUEUR BATEAU HTML ===================== */
+
+      const boatIcon = document.createElement("img");
+      boatIcon.src = "https://static.wixstatic.com/media/7feff5_ab13f48be41c4214b141c562efbbb948~mv2.png";
+      boatIcon.style.width = isMini ? "34px" : "46px";
+      boatIcon.style.height = "auto";
+      boatIcon.style.display = "block";
+      boatIcon.style.pointerEvents = "none";
+
+      boatMarker = new maptilersdk.Marker({
+        element: boatIcon,
+        anchor: "center"
+      })
+        .setLngLat(lastCoord)
+        .addTo(map);
+
       /* ===================== BLOG MARKER FINAL ===================== */
+
       const blogFeature = {
         type: "Feature",
         properties: {
@@ -543,9 +588,6 @@ window.VelaCarto = {
           coordinates: [9.10300, 43.75930]
         }
       };
-
-      if (map.getLayer("blog-layer")) map.removeLayer("blog-layer");
-      if (map.getSource("blog")) map.removeSource("blog");
 
       const blogMarker = new maptilersdk.Marker({
         color: "#5F7D95",
@@ -660,12 +702,8 @@ window.VelaCarto = {
         if (popupVisible) updatePopupPosition();
       });
 
-      if (slider) {
-        slider.value = slider.max;
-        slider.dispatchEvent(new Event("input"));
-      }
-
       /* ===================== TRACE ANNEXE ===================== */
+
       const extraTraceGeoJSON = {
         type: "Feature",
         geometry: {
@@ -738,102 +776,31 @@ window.VelaCarto = {
         }
       });
 
-      
-      const arrowCanvas = document.createElement("canvas");
-      arrowCanvas.width = 24;
-      arrowCanvas.height = 24;
-      
-      const arrowCtx = arrowCanvas.getContext("2d");
-      arrowCtx.clearRect(0, 0, 24, 24);
-      arrowCtx.fillStyle = "rgba(255,255,255,0.7)";
-      arrowCtx.beginPath();
-      arrowCtx.moveTo(0, 0);
-      arrowCtx.lineTo(24, 12);
-      arrowCtx.lineTo(0, 24);
-      arrowCtx.closePath();
-      arrowCtx.fill();
-      
-      const arrowImageData = arrowCtx.getImageData(0, 0, 24, 24);
-      
-      if (!map.hasImage("arrow")) {
-        map.addImage("arrow", arrowImageData);
+      if (slider) {
+        slider.value = slider.max;
+        slider.dispatchEvent(new Event("input"));
       }
-
-      const arrowFeatures = [];
-      const coords = extraTraceGeoJSON.geometry.coordinates;
-      const step = 2;
-
-      for (let i = 0; i < coords.length - 1; i += step) {
-        const start = coords[i];
-        const end = coords[i + 1];
-        const angle = Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI;
-
-        arrowFeatures.push({
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: start
-          },
-          properties: {
-            rotation: angle
-          }
-        });
-      }
-
-      map.addSource("extra-trace-arrows", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: arrowFeatures
-        }
-      });
-
-      map.addLayer({
-        id: "extra-trace-arrows",
-        type: "symbol",
-        source: "extra-trace-arrows",
-        layout: {
-          "icon-image": "arrow",
-          "icon-size": isMini ? 0.035 : 0.05,
-          "icon-allow-overlap": true,
-          "icon-rotate": ["get", "rotation"],
-          "icon-rotation-alignment": "map"
-        }
-      });
     });
 
     /* ===================== SLIDER ===================== */
+
     if (slider) {
       slider.addEventListener("input", () => {
+        if (!timelinePoints.length) return;
+
         const i = Number(slider.value);
-        const coords = trackGeoJSON.geometry.coordinates.slice(0, i + 1);
-        const currentCoord = coords[coords.length - 1];
+        const point = timelinePoints[i];
+
+        if (!point) return;
+
+        const currentCoord = [point.lon, point.lat];
 
         if (timeLabel) {
-          timeLabel.innerText = trackGeoJSON.properties.timestamps[i] || "";
+          timeLabel.innerText = point.time || "";
         }
 
-        if (map.getSource("track")) {
-          map.getSource("track").setData({
-            type: "Feature",
-            geometry: {
-              type: "LineString",
-              coordinates: coords
-            },
-            properties: {
-              timestamps: trackGeoJSON.properties.timestamps.slice(0, i + 1)
-            }
-          });
-        }
-
-        if (map.getSource("point")) {
-          map.getSource("point").setData({
-            type: "Feature",
-            geometry: {
-              type: "Point",
-              coordinates: currentCoord
-            }
-          });
+        if (boatMarker) {
+          boatMarker.setLngLat(currentCoord);
         }
       });
     }
