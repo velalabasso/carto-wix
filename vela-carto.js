@@ -9,12 +9,11 @@ window.VelaCarto = {
     /*
       Charge :
       1. track_velalab.csv depuis GitHub
-      2. tous les .csv détectés automatiquement dans nmea_logs/
-      3. un fichier NMEA connu en secours
-      4. fusionne par timestamp :
+      2. uniquement les fichiers .csv valides dans nmea_logs/
+      3. fusionne par timestamp :
          - track_velalab.csv est prioritaire
-         - les fichiers NMEA ajoutent seulement les timestamps absents
-      5. dédoublonne et trie chronologiquement
+         - les fichiers nmea_logs ajoutent les timestamps absents
+      4. trie chronologiquement
     */
 
     const repoOwner = "velalabasso";
@@ -185,56 +184,62 @@ window.VelaCarto = {
       const delimiter = detectDelimiter(lines);
       const firstRow = splitCSVLine(lines[0], delimiter);
 
-      const lonCandidates = [
+      const lonIndexFromHeader = findColumnIndex(firstRow, [
         "longitude",
         "lon",
         "lng",
-        "long",
-        "gps_lon",
-        "gps_longitude"
-      ];
+        "long"
+      ]);
 
-      const latCandidates = [
+      const latIndexFromHeader = findColumnIndex(firstRow, [
         "latitude",
-        "lat",
-        "gps_lat",
-        "gps_latitude"
-      ];
+        "lat"
+      ]);
 
-      const timeCandidates = [
+      const timeIndexFromHeader = findColumnIndex(firstRow, [
         "timestamp",
         "time",
         "datetime",
-        "date",
-        "utc",
-        "gps_time",
-        "gpstime",
-        "iso_time",
-        "isotime"
-      ];
+        "date"
+      ]);
 
-      let lonIndex = findColumnIndex(firstRow, lonCandidates);
-      let latIndex = findColumnIndex(firstRow, latCandidates);
-      let timeIndex = findColumnIndex(firstRow, timeCandidates);
-
+      let lonIndex = lonIndexFromHeader;
+      let latIndex = latIndexFromHeader;
+      let timeIndex = timeIndexFromHeader;
       let dataLines = lines;
 
-      const hasHeader =
+      const hasCorrectHeader =
         lonIndex !== -1 &&
         latIndex !== -1 &&
         timeIndex !== -1;
 
-      if (hasHeader) {
+      if (hasCorrectHeader) {
         dataLines = lines.slice(1);
       } else {
-        // Format attendu sans header :
+        // Sécurité : autorise aussi un fichier sans header du type :
         // longitude ; latitude ; timestamp
         lonIndex = 0;
         latIndex = 1;
         timeIndex = 2;
+
+        const testCells = splitCSVLine(lines[0], delimiter);
+        const testLon = parseNumber(testCells[lonIndex]);
+        const testLat = parseNumber(testCells[latIndex]);
+        const testTime = parseTimestamp(testCells[timeIndex]);
+
+        const looksLikeValidData =
+          Number.isFinite(testLon) &&
+          Number.isFinite(testLat) &&
+          testTime;
+
+        if (!looksLikeValidData) {
+          console.warn("CSV ignoré car mauvais format :", sourceName);
+          console.warn("Première ligne détectée :", lines[0]);
+          return [];
+        }
       }
 
-      return dataLines
+      const points = dataLines
         .map(line => {
           const cells = splitCSVLine(line, delimiter);
 
@@ -261,6 +266,10 @@ window.VelaCarto = {
           point.lat >= -90 &&
           point.lat <= 90
         );
+
+      console.log("CSV parsé :", sourceName, "=>", points.length, "points");
+
+      return points;
     }
 
     async function getNmeaCsvUrls() {
@@ -275,11 +284,25 @@ window.VelaCarto = {
         const data = await response.json();
 
         const detectedPaths = data.tree
-          .filter(item =>
-            item.type === "blob" &&
-            item.path.startsWith("nmea_logs/") &&
-            item.path.toLowerCase().endsWith(".csv")
-          )
+          .filter(item => {
+            if (item.type !== "blob") return false;
+
+            const path = item.path;
+            const lowerPath = path.toLowerCase();
+            const fileName = path.split("/").pop().toLowerCase();
+
+            return (
+              path.startsWith("nmea_logs/") &&
+              lowerPath.endsWith(".csv") &&
+              !lowerPath.endsWith(".csv.gz") &&
+              !lowerPath.includes(".gz") &&
+              !lowerPath.endsWith(".txt") &&
+              !lowerPath.endsWith(".xlsx") &&
+              !fileName.startsWith("~") &&
+              !fileName.startsWith(".") &&
+              !fileName.includes("~lock")
+            );
+          })
           .map(item => item.path);
 
         const allPaths = Array.from(new Set([
@@ -301,13 +324,19 @@ window.VelaCarto = {
 
     const nmeaCsvUrls = await getNmeaCsvUrls();
 
-    const nmeaTrackTexts = await Promise.all(
-      nmeaCsvUrls.map(url => fetchText(url))
+    const nmeaTrackResults = await Promise.all(
+      nmeaCsvUrls.map(async url => {
+        const text = await fetchText(url);
+        const points = parseTrackCSV(text, url);
+
+        return {
+          url,
+          points
+        };
+      })
     );
 
-    const nmeaTrackPoints = nmeaTrackTexts.flatMap((csvText, index) =>
-      parseTrackCSV(csvText, nmeaCsvUrls[index])
-    );
+    const nmeaTrackPoints = nmeaTrackResults.flatMap(result => result.points);
 
     const pointsByTimestamp = new Map();
 
@@ -356,7 +385,13 @@ window.VelaCarto = {
     console.log("===== VELA CARTO DEBUG =====");
     console.log("URL track principale :", mainTrackUrl);
     console.log("Points track_velalab.csv :", mainTrackPoints.length);
-    console.log("Fichiers NMEA trouvés :", nmeaCsvUrls);
+    console.log("Fichiers CSV NMEA trouvés :", nmeaCsvUrls);
+    console.table(
+      nmeaTrackResults.map(result => ({
+        url: result.url,
+        points: result.points.length
+      }))
+    );
     console.log("Points NMEA :", nmeaTrackPoints.length);
     console.log("Points fusionnés :", coordinates.length);
     console.log("Dernier point affiché :", lastCoord);
@@ -444,9 +479,10 @@ window.VelaCarto = {
     map.on("load", async () => {
       if (map.getLayer("Water")) {
         map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
+        map.addLayer(windLayer, "Water");
+      } else {
+        map.addLayer(windLayer);
       }
-
-      map.addLayer(windLayer, "Water");
 
       map.addSource("track", {
         type: "geojson",
