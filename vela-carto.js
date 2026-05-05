@@ -5,33 +5,46 @@ window.VelaCarto = {
 
     maptilersdk.config.apiKey = "OGxkSige7vgEEaQoKmhu";
 
-    /* ===================== TRACK ===================== */
+/* ===================== TRACK ===================== */
 /*
-  On charge maintenant :
-  1. track_velalab.csv à la racine du dépôt
-  2. tous les fichiers .csv trouvés dans nmea_logs/
-  3. on fusionne tous les points
-  4. on trie par timestamp
+  Charge :
+  1. track_velalab.csv
+  2. les CSV détectés automatiquement dans nmea_logs/
+  3. le fichier NMEA actuel en secours
+  4. fusionne, dédoublonne et trie par timestamp
 */
 
 const repoOwner = "velalabasso";
 const repoName = "zopa";
 const branch = "main";
 
-const mainTrackUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/track_velalab.csv`;
-const githubTreeUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/git/trees/${branch}?recursive=1`;
+const cacheBuster = `v=${Date.now()}`;
+
+const mainTrackUrl =
+  `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/track_velalab.csv?${cacheBuster}`;
+
+const githubTreeUrl =
+  `https://api.github.com/repos/${repoOwner}/${repoName}/git/trees/${branch}?recursive=1&${cacheBuster}`;
+
+// Fichier NMEA connu, ajouté en secours
+const fallbackNmeaCsvUrls = [
+  `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/nmea_logs/nmea_2026-05-04_20-55-03/nmea_2026-05-04_20-55-03.csv?${cacheBuster}`
+];
 
 async function fetchText(url) {
   const response = await fetch(url, { cache: "no-store" });
 
   if (!response.ok) {
-    throw new Error(`Impossible de charger : ${url}`);
+    console.warn("Impossible de charger :", url);
+    return "";
   }
 
   return await response.text();
 }
 
 function parseTrackCSV(csvText) {
+  if (!csvText || !csvText.trim()) return [];
+
   const lines = csvText
     .replace(/^\uFEFF/, "")
     .trim()
@@ -39,11 +52,14 @@ function parseTrackCSV(csvText) {
     .map(line => line.trim())
     .filter(Boolean);
 
+  if (!lines.length) return [];
+
   // Supprimer header si présent
+  const firstLine = lines[0].toLowerCase();
   if (
-    lines.length &&
-    lines[0].toLowerCase().includes("longitude") &&
-    lines[0].toLowerCase().includes("latitude")
+    firstLine.includes("longitude") &&
+    firstLine.includes("latitude") &&
+    firstLine.includes("timestamp")
   ) {
     lines.shift();
   }
@@ -65,40 +81,55 @@ function parseTrackCSV(csvText) {
     .filter(point =>
       Number.isFinite(point.lon) &&
       Number.isFinite(point.lat) &&
-      point.time
+      point.time &&
+      !Number.isNaN(new Date(point.time).getTime())
     );
 }
 
 async function getNmeaCsvUrls() {
-  const response = await fetch(githubTreeUrl, { cache: "no-store" });
+  try {
+    const response = await fetch(githubTreeUrl, { cache: "no-store" });
 
-  if (!response.ok) {
-    throw new Error("Impossible de lire le dossier nmea_logs sur GitHub.");
+    if (!response.ok) {
+      console.warn("Impossible de lire automatiquement nmea_logs. Utilisation du fichier de secours.");
+      return fallbackNmeaCsvUrls;
+    }
+
+    const data = await response.json();
+
+    const detectedUrls = data.tree
+      .filter(item =>
+        item.type === "blob" &&
+        item.path.startsWith("nmea_logs/") &&
+        item.path.toLowerCase().endsWith(".csv")
+      )
+      .map(item => {
+        const encodedPath = item.path
+          .split("/")
+          .map(part => encodeURIComponent(part))
+          .join("/");
+
+        return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/${encodedPath}?${cacheBuster}`;
+      });
+
+    // On fusionne les fichiers détectés + le fichier de secours,
+    // en évitant les doublons d'URL.
+    return Array.from(new Set([
+      ...detectedUrls,
+      ...fallbackNmeaCsvUrls
+    ]));
+
+  } catch (error) {
+    console.warn("Erreur GitHub API :", error);
+    return fallbackNmeaCsvUrls;
   }
-
-  const data = await response.json();
-
-  return data.tree
-    .filter(item =>
-      item.type === "blob" &&
-      item.path.startsWith("nmea_logs/") &&
-      item.path.toLowerCase().endsWith(".csv")
-    )
-    .map(item => {
-      const encodedPath = item.path
-        .split("/")
-        .map(part => encodeURIComponent(part))
-        .join("/");
-
-      return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/refs/heads/${branch}/${encodedPath}`;
-    });
 }
 
 // Charger track_velalab.csv
 const mainTrackText = await fetchText(mainTrackUrl);
 const mainTrackPoints = parseTrackCSV(mainTrackText);
 
-// Charger tous les CSV dans nmea_logs/
+// Charger les CSV NMEA
 const nmeaCsvUrls = await getNmeaCsvUrls();
 
 const nmeaTrackTexts = await Promise.all(
@@ -146,9 +177,15 @@ const trackGeoJSON = {
 
 const lastCoord = trackGeoJSON.geometry.coordinates.at(-1);
 
-console.log(
-  `Trace Vela Lab chargée : ${coordinates.length} points au total, dont ${nmeaCsvUrls.length} fichier(s) CSV depuis nmea_logs.`
-);
+// Debug visible dans la console navigateur
+console.log("===== VELA CARTO DEBUG =====");
+console.log("Points track_velalab.csv :", mainTrackPoints.length);
+console.log("Fichiers NMEA trouvés :", nmeaCsvUrls);
+console.log("Points NMEA :", nmeaTrackPoints.length);
+console.log("Points fusionnés :", coordinates.length);
+console.log("Dernier point affiché :", lastCoord);
+console.log("Dernier timestamp :", timestamps.at(-1));
+console.log("============================");
 
     /* ===================== MAP ===================== */
     const map = new maptilersdk.Map({
