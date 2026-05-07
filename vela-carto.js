@@ -5,24 +5,28 @@ window.VelaCarto = {
 
     maptilersdk.config.apiKey = "OGxkSige7vgEEaQoKmhu";
 
-    /* ===================== CONFIG GITHUB ===================== */
+    /* ===================== CONFIG ===================== */
 
     const repoOwner = "velalabasso";
     const repoName = "zopa";
     const branch = "main";
 
-    const cacheBuster = `v=${Date.now()}`;
-
     const fallbackCenter = [7.3367184670459835, 43.589687317520685];
-
     const mainTrackPath = "track_velalab.csv";
+    const nmeaRootPath = "nmea_logs/";
 
-    const fallbackNmeaCsvPaths = [
-      "nmea_logs/nmea_2026-05-04_20-55-03/nmea_2026-05-04_20-55-03.csv"
-    ];
+    // Mise à jour automatique tant que la page Wix reste ouverte.
+    // 120000 = toutes les 2 minutes. Tu peux mettre 300000 pour 5 minutes.
+    const refreshMs = Number(options.refreshMs || 120000);
+    const enableAutoRefresh = options.enableAutoRefresh !== false;
 
-    const githubTreeUrl =
-      `https://api.github.com/repos/${repoOwner}/${repoName}/git/trees/${branch}?recursive=1&${cacheBuster}`;
+    function cacheBuster() {
+      return `v=${Date.now()}`;
+    }
+
+    function githubTreeUrl() {
+      return `https://api.github.com/repos/${repoOwner}/${repoName}/git/trees/${branch}?recursive=1&${cacheBuster()}`;
+    }
 
     function githubRawUrl(path) {
       const encodedPath = path
@@ -30,12 +34,17 @@ window.VelaCarto = {
         .map(part => encodeURIComponent(part))
         .join("/");
 
-      return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${encodedPath}?${cacheBuster}`;
+      return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${encodedPath}?${cacheBuster()}`;
     }
 
     async function fetchText(url) {
       try {
-        const response = await fetch(url, { cache: "no-store" });
+        const response = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            "Accept": "text/plain,*/*"
+          }
+        });
 
         if (!response.ok) {
           console.warn("Impossible de charger :", url, response.status);
@@ -43,10 +52,30 @@ window.VelaCarto = {
         }
 
         return await response.text();
-
       } catch (error) {
         console.warn("Erreur chargement :", url, error);
         return "";
+      }
+    }
+
+    async function fetchJSON(url) {
+      try {
+        const response = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            "Accept": "application/vnd.github+json"
+          }
+        });
+
+        if (!response.ok) {
+          console.warn("Impossible de charger JSON :", url, response.status);
+          return null;
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.warn("Erreur chargement JSON :", url, error);
+        return null;
       }
     }
 
@@ -209,8 +238,7 @@ window.VelaCarto = {
       if (hasCorrectHeader) {
         dataLines = lines.slice(1);
       } else {
-        // Sécurité pour un fichier sans header :
-        // longitude ; latitude ; timestamp
+        // Sécurité pour un fichier sans header : longitude ; latitude ; timestamp
         lonIndex = 0;
         latIndex = 1;
         timeIndex = 2;
@@ -262,8 +290,28 @@ window.VelaCarto = {
         .sort((a, b) => a.timestampMs - b.timestampMs);
 
       console.log("CSV parsé :", sourceName, "=>", points.length, "points");
-
       return points;
+    }
+
+    function dedupeAndSortPoints(points) {
+      const byKey = new Map();
+
+      points.forEach(point => {
+        if (!point) return;
+
+        const key = [
+          point.timestampMs,
+          Number(point.lon).toFixed(6),
+          Number(point.lat).toFixed(6)
+        ].join("|");
+
+        if (!byKey.has(key)) {
+          byKey.set(key, point);
+        }
+      });
+
+      return Array.from(byKey.values())
+        .sort((a, b) => a.timestampMs - b.timestampMs);
     }
 
     function pointsToLineFeature(points, sourceName) {
@@ -271,6 +319,7 @@ window.VelaCarto = {
 
       let coordinates = points.map(point => [point.lon, point.lat]);
 
+      // Un LineString GeoJSON doit avoir au moins 2 coordonnées.
       if (coordinates.length === 1) {
         coordinates = [coordinates[0], coordinates[0]];
       }
@@ -279,149 +328,148 @@ window.VelaCarto = {
         type: "Feature",
         properties: {
           source: sourceName,
-          timestamps: points.map(point => point.time)
+          firstTimestamp: points[0]?.time || null,
+          lastTimestamp: points[points.length - 1]?.time || null,
+          pointCount: points.length
         },
         geometry: {
           type: "LineString",
-          coordinates: coordinates
+          coordinates
         }
       };
     }
 
-    async function getNmeaCsvInfos() {
-      try {
-        const response = await fetch(githubTreeUrl, { cache: "no-store" });
+    function pointsToGeoJSON(points) {
+      const feature = pointsToLineFeature(points, "vela-live-track");
 
-        if (!response.ok) {
-          console.warn("Impossible de lire automatiquement nmea_logs. Utilisation du fichier de secours.");
-          return fallbackNmeaCsvPaths.map(path => ({
-            path,
-            url: githubRawUrl(path)
-          }));
-        }
-
-        const data = await response.json();
-
-        const detectedPaths = data.tree
-          .filter(item => {
-            if (item.type !== "blob") return false;
-
-            const path = item.path;
-            const lowerPath = path.toLowerCase();
-            const fileName = path.split("/").pop().toLowerCase();
-
-            return (
-              path.startsWith("nmea_logs/") &&
-              lowerPath.endsWith(".csv") &&
-              !lowerPath.endsWith(".csv.gz") &&
-              !lowerPath.includes(".gz") &&
-              !lowerPath.endsWith(".txt") &&
-              !lowerPath.endsWith(".xlsx") &&
-              !fileName.startsWith("~") &&
-              !fileName.startsWith(".") &&
-              !fileName.includes("~lock")
-            );
-          })
-          .map(item => item.path);
-
-        const allPaths = Array.from(new Set([
-          ...detectedPaths,
-          ...fallbackNmeaCsvPaths
-        ]));
-
-        return allPaths.map(path => ({
-          path,
-          url: githubRawUrl(path)
-        }));
-
-      } catch (error) {
-        console.warn("Erreur GitHub API :", error);
-
-        return fallbackNmeaCsvPaths.map(path => ({
-          path,
-          url: githubRawUrl(path)
-        }));
-      }
+      return {
+        type: "FeatureCollection",
+        features: feature ? [feature] : []
+      };
     }
 
-    /* ===================== CHARGEMENT TRACK PRINCIPALE ===================== */
+    async function getNmeaCsvInfos() {
+      const data = await fetchJSON(githubTreeUrl());
 
-    const mainTrackUrl = githubRawUrl(mainTrackPath);
-    const mainTrackText = await fetchText(mainTrackUrl);
-    const mainTrackPoints = parseTrackCSV(mainTrackText, mainTrackPath);
+      if (!data || !Array.isArray(data.tree)) {
+        console.warn("Impossible de lire automatiquement nmea_logs sur GitHub.");
+        return [];
+      }
 
-    const mainTrackFeature = pointsToLineFeature(mainTrackPoints, mainTrackPath);
+      if (data.truncated) {
+        console.warn("Attention : la réponse GitHub est tronquée. Certains CSV peuvent manquer.");
+      }
 
-    const mainTrackGeoJSON = {
-      type: "FeatureCollection",
-      features: mainTrackFeature ? [mainTrackFeature] : []
-    };
+      const detectedPaths = data.tree
+        .filter(item => {
+          if (item.type !== "blob") return false;
 
-    /* ===================== CHARGEMENT NMEA LOGS CSV ===================== */
+          const path = String(item.path || "");
+          const lowerPath = path.toLowerCase();
+          const fileName = path.split("/").pop().toLowerCase();
 
-    const nmeaCsvInfos = await getNmeaCsvInfos();
+          return (
+            path.startsWith(nmeaRootPath) &&
+            lowerPath.endsWith(".csv") &&
+            !lowerPath.endsWith(".csv.gz") &&
+            !lowerPath.includes(".gz") &&
+            !lowerPath.endsWith(".txt") &&
+            !lowerPath.endsWith(".xlsx") &&
+            !fileName.startsWith("~") &&
+            !fileName.startsWith(".") &&
+            !fileName.includes("~lock")
+          );
+        })
+        .map(item => item.path)
+        .sort();
 
-    const nmeaTrackResults = await Promise.all(
-      nmeaCsvInfos.map(async info => {
-        const text = await fetchText(info.url);
-        const points = parseTrackCSV(text, info.path);
+      const uniquePaths = Array.from(new Set(detectedPaths));
 
-        return {
-          path: info.path,
-          url: info.url,
-          points
-        };
-      })
-    );
+      return uniquePaths.map(path => ({
+        path,
+        url: githubRawUrl(path)
+      }));
+    }
 
-    const nmeaFeatures = nmeaTrackResults
-      .map(result => pointsToLineFeature(result.points, result.path))
-      .filter(Boolean);
+    async function mapLimit(items, limit, asyncMapper) {
+      const results = [];
+      let nextIndex = 0;
 
-    const nmeaTrackGeoJSON = {
-      type: "FeatureCollection",
-      features: nmeaFeatures
-    };
+      async function worker() {
+        while (nextIndex < items.length) {
+          const currentIndex = nextIndex;
+          nextIndex++;
+          results[currentIndex] = await asyncMapper(items[currentIndex], currentIndex);
+        }
+      }
 
-    const nmeaTrackPoints = nmeaTrackResults.flatMap(result => result.points);
+      const workers = Array.from(
+        { length: Math.min(limit, items.length) },
+        () => worker()
+      );
 
-    /* ===================== TIMELINE POUR LE MARQUEUR ===================== */
+      await Promise.all(workers);
+      return results;
+    }
 
-    const timelinePoints = [
-      ...mainTrackPoints,
-      ...nmeaTrackPoints
-    ].sort((a, b) => a.timestampMs - b.timestampMs);
+    async function loadAllTrackPoints() {
+      const mainTrackUrl = githubRawUrl(mainTrackPath);
+      const mainTrackText = await fetchText(mainTrackUrl);
+      const mainTrackPoints = parseTrackCSV(mainTrackText, mainTrackPath);
 
-    const lastPoint = timelinePoints.length
-      ? timelinePoints[timelinePoints.length - 1]
-      : null;
+      const nmeaCsvInfos = await getNmeaCsvInfos();
 
-    const lastCoord = lastPoint
-      ? [lastPoint.lon, lastPoint.lat]
-      : fallbackCenter;
+      const nmeaTrackResults = await mapLimit(
+        nmeaCsvInfos,
+        6,
+        async info => {
+          const text = await fetchText(info.url);
+          const points = parseTrackCSV(text, info.path);
 
-    console.log("===== VELA CARTO DEBUG =====");
-    console.log("URL track principale :", mainTrackUrl);
-    console.log("Points track_velalab.csv :", mainTrackPoints.length);
-    console.log("Fichiers CSV NMEA trouvés :", nmeaCsvInfos.map(info => info.path));
-    console.table(
-      nmeaTrackResults.map(result => ({
-        fichier: result.path,
-        points: result.points.length
-      }))
-    );
-    console.log("Nombre de traces NMEA affichées :", nmeaFeatures.length);
-    console.log("Points NMEA :", nmeaTrackPoints.length);
-    console.log("Dernier point affiché :", lastCoord);
-    console.log("Dernier timestamp :", lastPoint ? lastPoint.time : "Aucune donnée GPS");
-    console.log("============================");
+          return {
+            path: info.path,
+            url: info.url,
+            points
+          };
+        }
+      );
+
+      const nmeaTrackPoints = nmeaTrackResults.flatMap(result => result.points);
+      const livePoints = dedupeAndSortPoints([
+        ...mainTrackPoints,
+        ...nmeaTrackPoints
+      ]);
+
+      console.log("===== VELA CARTO DEBUG =====");
+      console.log("URL track principale :", mainTrackUrl);
+      console.log("Points track_velalab.csv :", mainTrackPoints.length);
+      console.log("Fichiers CSV NMEA trouvés :", nmeaCsvInfos.length, nmeaCsvInfos.map(info => info.path));
+      console.table(
+        nmeaTrackResults.map(result => ({
+          fichier: result.path,
+          points: result.points.length
+        }))
+      );
+      console.log("Points NMEA :", nmeaTrackPoints.length);
+      console.log("Points live après dédoublonnage :", livePoints.length);
+      console.log("Dernier point live :", livePoints.length ? [livePoints[livePoints.length - 1].lon, livePoints[livePoints.length - 1].lat] : "Aucune donnée GPS");
+      console.log("Dernier timestamp :", livePoints.length ? livePoints[livePoints.length - 1].time : "Aucune donnée GPS");
+      console.log("============================");
+
+      return {
+        mainTrackPoints,
+        nmeaTrackResults,
+        nmeaTrackPoints,
+        livePoints
+      };
+    }
 
     /* ===================== MAP ===================== */
 
     const map = new maptilersdk.Map({
       container: "map",
       style: maptilersdk.MapStyle.BACKDROP,
-      center: lastCoord,
+      center: fallbackCenter,
       zoom: isMini ? 3.5 : 5
     });
 
@@ -465,7 +513,8 @@ window.VelaCarto = {
     const legend = document.getElementById("legend");
 
     if (slider) {
-      slider.max = Math.max(timelinePoints.length - 1, 0);
+      slider.max = 0;
+      slider.value = 0;
     }
 
     if (isMini) {
@@ -497,6 +546,50 @@ window.VelaCarto = {
     });
 
     let boatMarker = null;
+    let timelinePoints = [];
+    let hasCenteredOnce = false;
+
+    function updateSliderFromTimeline() {
+      if (!slider) return;
+
+      slider.max = Math.max(timelinePoints.length - 1, 0);
+      slider.value = slider.max;
+    }
+
+    function updateBoatToLastPoint() {
+      if (!timelinePoints.length) return;
+
+      const lastPoint = timelinePoints[timelinePoints.length - 1];
+      const lastCoord = [lastPoint.lon, lastPoint.lat];
+
+      if (boatMarker) {
+        boatMarker.setLngLat(lastCoord);
+      }
+
+      if (timeLabel) {
+        timeLabel.innerText = lastPoint.time || "";
+      }
+
+      if (!hasCenteredOnce) {
+        map.setCenter(lastCoord);
+        hasCenteredOnce = true;
+      }
+    }
+
+    async function refreshLiveTrack() {
+      const result = await loadAllTrackPoints();
+      timelinePoints = result.livePoints;
+
+      const geojson = pointsToGeoJSON(timelinePoints);
+      const source = map.getSource("vela-live-track");
+
+      if (source) {
+        source.setData(geojson);
+      }
+
+      updateSliderFromTimeline();
+      updateBoatToLastPoint();
+    }
 
     /* ===================== LOAD ===================== */
 
@@ -512,17 +605,20 @@ window.VelaCarto = {
         console.warn("Impossible d'ajouter la couche vent :", error);
       }
 
-      /* ===================== TRACE TRACK PRINCIPALE ===================== */
+      /* ===================== TRACE LIVE GITHUB CSV ===================== */
 
-      map.addSource("main-track", {
+      map.addSource("vela-live-track", {
         type: "geojson",
-        data: mainTrackGeoJSON
+        data: {
+          type: "FeatureCollection",
+          features: []
+        }
       });
 
       map.addLayer({
-        id: "main-track-line",
+        id: "vela-live-track-line",
         type: "line",
-        source: "main-track",
+        source: "vela-live-track",
         layout: {
           "line-join": "round",
           "line-cap": "round"
@@ -531,28 +627,6 @@ window.VelaCarto = {
           "line-color": "#ffffff",
           "line-width": isMini ? 2 : 3,
           "line-opacity": 1
-        }
-      });
-
-      /* ===================== TRACE NMEA LOGS CSV ===================== */
-
-      map.addSource("nmea-tracks", {
-        type: "geojson",
-        data: nmeaTrackGeoJSON
-      });
-
-      map.addLayer({
-        id: "nmea-tracks-line",
-        type: "line",
-        source: "nmea-tracks",
-        layout: {
-          "line-join": "round",
-          "line-cap": "round"
-        },
-        paint: {
-          "line-color": "#ffffff",
-          "line-width": isMini ? 2 : 3,
-          "line-opacity": 0.85
         }
       });
 
@@ -569,7 +643,7 @@ window.VelaCarto = {
         element: boatIcon,
         anchor: "center"
       })
-        .setLngLat(lastCoord)
+        .setLngLat(fallbackCenter)
         .addTo(map);
 
       /* ===================== BLOG MARKER FINAL ===================== */
@@ -702,7 +776,7 @@ window.VelaCarto = {
         if (popupVisible) updatePopupPosition();
       });
 
-      /* ===================== TRACE ANNEXE ===================== */
+      /* ===================== TRACE ANNEXE POINTILLÉE ===================== */
 
       const extraTraceGeoJSON = {
         type: "Feature",
@@ -776,9 +850,12 @@ window.VelaCarto = {
         }
       });
 
-      if (slider) {
-        slider.value = slider.max;
-        slider.dispatchEvent(new Event("input"));
+      /* ===================== PREMIER CHARGEMENT + AUTO REFRESH ===================== */
+
+      await refreshLiveTrack();
+
+      if (enableAutoRefresh && refreshMs > 0) {
+        window.setInterval(refreshLiveTrack, refreshMs);
       }
     });
 
