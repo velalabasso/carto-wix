@@ -749,49 +749,35 @@ window.VelaCarto = {
       /* ---- Marqueur bateau SVG voilier rotatif ---- */
       const boatSize = isMini ? 36 : 52;
 
-      // SVG voilier type Vendée Globe — pointe vers le HAUT (nord = 0°)
-      // Coque inversée : proue en haut, poupe en bas
-      // Génois arrondi côté tribord, grande voile côté bâbord
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
         viewBox="-24 -28 48 56">
 
         <defs>
-          <filter id="bs" x="-30%" y="-30%" width="160%" height="160%">
+          <filter id="bs" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="rgba(0,0,0,0.55)"/>
           </filter>
         </defs>
 
-        <!-- Coque — ellipse fine, proue en haut -->
-        <ellipse cx="0" cy="4" rx="4.5" ry="15"
+        <!-- Coque vue du dessus — fuseau fin, proue en haut -->
+        <ellipse cx="0" cy="4" rx="4" ry="16"
           fill="#5F7D95" stroke="white" stroke-width="1.2"
           filter="url(#bs)"/>
 
-        <!-- Quille — sous la coque (poupe = bas) -->
-        <rect x="-1.5" y="17" width="3" height="5" rx="1.2"
-          fill="#5F7D95" stroke="white" stroke-width="0.8"/>
+        <!-- Mât — point central sur la coque -->
+        <circle cx="0" cy="-2" r="1.2" fill="white"/>
 
-        <!-- Mât — du bas de la voile à la tête de mât -->
-        <line x1="0" y1="-22" x2="0" y2="13"
-          stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- Grande voile — trait courbe depuis le mât vers la poupe bâbord
+             Vue d'en haut : un arc fin qui part du mât et file vers l'arrière -->
+        <path d="M 0,-2 Q -8,6 -7,14"
+          fill="none" stroke="white" stroke-width="1.8"
+          stroke-linecap="round"/>
 
-        <!-- Bôme — horizontal depuis le mât vers l'arrière bâbord -->
-        <line x1="0" y1="10" x2="-11" y2="13"
-          stroke="white" stroke-width="1" stroke-linecap="round"/>
-
-        <!-- Grande voile — triangle mât/tête/bôme, côté bâbord -->
-        <polygon points="0,-21 0,10 -12,13"
-          fill="white" fill-opacity="0.90"
-          stroke="#5F7D95" stroke-width="0.8" stroke-linejoin="round"/>
-
-        <!-- Génois — voile d'avant arrondie, côté tribord -->
-        <path d="M 0,-20 C 14,-12 16,2 12,8 L 0,-2 Z"
-          fill="white" fill-opacity="0.78"
-          stroke="#5F7D95" stroke-width="0.7"/>
-
-        <!-- Étrave (point de proue) — petit triangle accentué -->
-        <polygon points="0,-26 -2.5,-18 2.5,-18"
-          fill="white" opacity="0.6"/>
+        <!-- Génois — arc fin et bombé côté tribord, proche de la coque
+             Part de l'étrave, se gonfle légèrement à tribord, revient au mât -->
+        <path d="M 0,-18 Q 7,-10 0,-2"
+          fill="none" stroke="white" stroke-width="1.6"
+          stroke-linecap="round" opacity="0.9"/>
 
       </svg>`;
 
@@ -808,7 +794,6 @@ window.VelaCarto = {
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
         .setLngLat(fallbackCenter).addTo(map);
 
-      // Fonction de calcul du cap entre deux points (bearing géodésique)
       function computeBearing(lat1, lon1, lat2, lon2) {
         const toRad = d => d * Math.PI / 180;
         const toDeg = r => r * 180 / Math.PI;
