@@ -328,28 +328,99 @@ window.VelaCarto = {
       ]})
     });
 
-    /* ===================== UI EXISTANTE ===================== */
+    /* ===================== UI — tout créé en JS ===================== */
 
-    const variableName = document.getElementById("variable-name");
-    const pointerData  = document.getElementById("pointer-data");
-    const slider       = document.getElementById("time-slider");
-    const timeLabel    = document.getElementById("time-label");
-    const legend       = document.getElementById("legend");
+    // Slider wrapper
+    const sliderWrapper = document.createElement("div");
+    Object.assign(sliderWrapper.style, {
+      position: "fixed", bottom: "16px", left: "50px", right: "50px",
+      zIndex: "2"
+    });
 
-    if (slider) { slider.max = 0; slider.value = 0; }
+    const slider = document.createElement("input");
+    slider.type  = "range"; slider.id = "time-slider";
+    slider.min   = "0"; slider.step = "1"; slider.value = "0"; slider.max = "0";
+    Object.assign(slider.style, {
+      width: "100%", appearance: "none", WebkitAppearance: "none",
+      height: "6px", borderRadius: "99px",
+      background: "rgba(95,125,149,0.55)", backdropFilter: "blur(4px)",
+      outline: "none", cursor: "pointer",
+      border: "1px solid rgba(255,255,255,0.18)",
+      boxShadow: "0 1px 6px rgba(0,0,0,0.3)", display: "block"
+    });
 
-    if (isMini) {
-      [slider, timeLabel, legend].forEach(el => { if (el) el.style.display = "none"; });
-      if (variableName) variableName.style.fontSize = "14px";
-      if (pointerData)  { pointerData.style.fontSize = "14px"; pointerData.style.top = "25px"; }
-    }
+    // Inject thumb CSS via <style> tag (can't set pseudo-elements via JS)
+    const sliderStyle = document.createElement("style");
+    sliderStyle.textContent = `
+      #time-slider::-webkit-slider-thumb {
+        -webkit-appearance:none; appearance:none;
+        width:22px; height:22px; border-radius:50%;
+        background:#2563eb; border:3px solid white;
+        box-shadow:0 0 8px rgba(37,99,235,0.7), 0 2px 6px rgba(0,0,0,0.4);
+        cursor:pointer; transition:transform .15s;
+      }
+      #time-slider::-webkit-slider-thumb:hover { transform:scale(1.15); }
+      #time-slider::-moz-range-thumb {
+        width:22px; height:22px; border-radius:50%;
+        background:#2563eb; border:3px solid white;
+        box-shadow:0 0 8px rgba(37,99,235,0.7), 0 2px 6px rgba(0,0,0,0.4);
+        cursor:pointer;
+      }
+    `;
+    document.head.appendChild(sliderStyle);
+
+    sliderWrapper.appendChild(slider);
+    document.getElementById("map").appendChild(sliderWrapper);
+
+    // Éléments legacy attendus par le code (timeLabel, legend, variableName, pointerData)
+    // On les crée masqués pour éviter les erreurs
+    const timeLabel    = document.createElement("div"); timeLabel.style.display    = "none"; document.body.appendChild(timeLabel);
+    const legend       = document.createElement("div"); legend.style.display       = "none"; document.body.appendChild(legend);
+    const variableName = document.createElement("div"); variableName.style.display = "none"; document.body.appendChild(variableName);
+    const pointerData  = document.createElement("div"); pointerData.style.display  = "none"; document.body.appendChild(pointerData);
+
+    if (isMini) slider.style.display = "none";
 
     map.on("mousemove", e => {
       if (!pointerData) return;
       const v = windLayer.pickAt(e.lngLat.lng, e.lngLat.lat);
-      pointerData.innerText = v ? `${(v.speedMetersPerSecond * 1.943844).toFixed(1)} kn` : "";
+      pointerData.innerText = v ? `${(v.speedMetersPerSecond * 1.943844).toFixed(1)} kn` : "— kn";
     });
-    map.on("mouseout", () => { if (pointerData) pointerData.innerText = ""; });
+    map.on("mouseout", () => { if (pointerData) pointerData.innerText = "— kn"; });
+
+    // Widget vent — créé entièrement en JS, indépendant du HTML
+    let windWidget = null;
+    if (!isMini) {
+      windWidget = document.createElement("div");
+      Object.assign(windWidget.style, {
+        position: "absolute", top: "12px", left: "12px",
+        display: "flex", flexDirection: "column",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "12px", padding: "8px 14px 10px 14px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        minWidth: "80px", zIndex: "800", pointerEvents: "none"
+      });
+      windWidget.innerHTML = `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+          color:#c8dcea;font-family:Helvetica Neue,Arial,sans-serif;
+          font-weight:500;margin-bottom:2px;">Vent</div>
+        <div id="vw-value" style="font-size:26px;font-weight:700;color:white;
+          font-family:Helvetica Neue,Arial,sans-serif;letter-spacing:-.02em;
+          line-height:1;text-shadow:0 1px 6px rgba(0,0,0,0.4);">— kn</div>`;
+      document.getElementById("map").appendChild(windWidget);
+    }
+
+    map.on("mousemove", e => {
+      const vwEl = document.getElementById("vw-value");
+      if (!vwEl) return;
+      const v = windLayer.pickAt(e.lngLat.lng, e.lngLat.lat);
+      vwEl.innerText = v ? `${(v.speedMetersPerSecond * 1.943844).toFixed(1)} kn` : "— kn";
+    });
+    map.on("mouseout", () => {
+      const vwEl = document.getElementById("vw-value");
+      if (vwEl) vwEl.innerText = "— kn";
+    });
 
     // Conteneur bas-gauche qui regroupe nav + science empilés
     let bottomLeftContainer = null;
