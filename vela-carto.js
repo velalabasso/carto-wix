@@ -760,55 +760,37 @@ window.VelaCarto = {
           <filter id="bsf" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.6)"/>
           </filter>
-
-          <!-- Spi : rayons alternés vert clair / blanc -->
-          <!-- On fait un clipPath circulaire pour le spi -->
           <clipPath id="spiClip">
-            <ellipse cx="-28" cy="14" rx="20" ry="22"/>
+            <ellipse cx="20" cy="6" rx="18" ry="20"/>
           </clipPath>
         </defs>
 
-        <!-- ======= SPINNAKER ======= -->
-        <!-- Ellipse de base du spi -->
-        <ellipse cx="-28" cy="14" rx="20" ry="22"
+        <!-- ======= SPINNAKER — côté tribord (droite), proche de la coque ======= -->
+        <ellipse cx="20" cy="6" rx="18" ry="20"
           fill="#22c55e" filter="url(#bsf)" opacity="0.95"/>
 
-        <!-- Rayons alternés blancs par-dessus — comme les rayons rouges de la photo -->
-        <!-- On simule les bandes radiales avec des triangles depuis le centre du spi -->
         <g clip-path="url(#spiClip)">
-          <!-- Centre du spi = -28, 14 -->
-          <!-- Rayon 1 -->
-          <polygon points="-28,14 -10,-8 -5,2"   fill="white" opacity="0.75"/>
-          <!-- Rayon 2 -->
-          <polygon points="-28,14 -20,-8 -8,-10"  fill="white" opacity="0.7"/>
-          <!-- Rayon 3 -->
-          <polygon points="-28,14 -34,-8 -22,-10" fill="white" opacity="0.72"/>
-          <!-- Rayon 4 -->
-          <polygon points="-28,14 -46,-4 -42,8"   fill="white" opacity="0.7"/>
-          <!-- Rayon 5 -->
-          <polygon points="-28,14 -48,18 -44,28"  fill="white" opacity="0.72"/>
-          <!-- Rayon 6 -->
-          <polygon points="-28,14 -40,36 -28,38"  fill="white" opacity="0.7"/>
-          <!-- Rayon 7 -->
-          <polygon points="-28,14 -16,36 -8,30"   fill="white" opacity="0.72"/>
+          <polygon points="20,6  36,-14  40,-4"   fill="white" opacity="0.75"/>
+          <polygon points="20,6  28,-14  38,-6"   fill="white" opacity="0.7"/>
+          <polygon points="20,6  14,-14  22,-16"  fill="white" opacity="0.72"/>
+          <polygon points="20,6   4,-10   6,4"    fill="white" opacity="0.7"/>
+          <polygon points="20,6   2,8     4,20"   fill="white" opacity="0.72"/>
+          <polygon points="20,6  10,26   20,28"   fill="white" opacity="0.7"/>
+          <polygon points="20,6  30,26   38,18"   fill="white" opacity="0.72"/>
         </g>
 
-        <!-- Contour spi -->
-        <ellipse cx="-28" cy="14" rx="20" ry="22"
+        <ellipse cx="20" cy="6" rx="18" ry="20"
           fill="none" stroke="#16a34a" stroke-width="0.8" opacity="0.7"/>
 
-        <!-- ======= DRISSES spi — fils du bout-dehors au spi ======= -->
-        <line x1="-4" y1="-18" x2="-10" y2="-6"
+        <!-- ======= DRISSES spi ======= -->
+        <line x1="2" y1="-18" x2="4" y2="-12"
           stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>
-        <line x1="-4" y1="-18" x2="-48" y2="18"
+        <line x1="2" y1="-18" x2="38" y2="14"
           stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
-        <line x1="-4" y1="-18" x2="-20" y2="36"
+        <line x1="2" y1="-18" x2="16" y2="26"
           stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
 
-        <!-- ======= COQUE — forme exacte photo ======= -->
-        <!-- Poupe (arrière) : demi-cercle large en haut-droite de la coque -->
-        <!-- Proue (avant)  : V pointu vers le bas-gauche -->
-        <!-- Dans notre repère : proue = haut, poupe = bas-large -->
+        <!-- ======= COQUE ======= -->
         <path d="
           M 0,-22
           C 2,-18  8,-8  12,2
@@ -820,18 +802,18 @@ window.VelaCarto = {
           fill="white" stroke="#cccccc" stroke-width="0.8"
           filter="url(#bsf)"/>
 
-        <!-- Grand-voile — triangle noir le long du bord bâbord de la coque -->
+        <!-- Grand-voile -->
         <polygon points="0,-20  -13,22  -2,22"
           fill="#1a1a2e" opacity="0.85"/>
 
-        <!-- Bout-dehors — tangon diagonal vers bâbord avant -->
-        <line x1="0" y1="-18" x2="-4" y2="-22"
+        <!-- Bout-dehors -->
+        <line x1="0" y1="-18" x2="2" y2="-23"
           stroke="white" stroke-width="1.2" stroke-linecap="round"/>
 
         <!-- Mât -->
         <circle cx="0" cy="-4" r="1.8" fill="#aabcca" stroke="white" stroke-width="0.6"/>
 
-        <!-- Cockpit — zone arrière de la coque -->
+        <!-- Cockpit -->
         <ellipse cx="8" cy="20" rx="5" ry="4"
           fill="none" stroke="#aaaaaa" stroke-width="0.7" opacity="0.6"/>
 
@@ -871,24 +853,22 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      // Marqueur blog — épingle en V pointée vers le bas, bleu #5F7D95
+      // Marqueur blog — trois cercles concentriques bleu/blanc
       const blogDotEl = document.createElement("div");
-      const bSize = isMini ? 24 : 32;
+      const bSize = isMini ? 18 : 24;
       blogDotEl.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize*1.3}" viewBox="0 0 32 42">
-          <!-- Corps de l'épingle -->
-          <path d="M16,2 C9,2 4,7 4,14 C4,22 16,40 16,40 C16,40 28,22 28,14 C28,7 23,2 16,2 Z"
-            fill="rgba(95,125,149,0.85)" stroke="white" stroke-width="1.5"/>
-          <!-- Point blanc central -->
-          <circle cx="16" cy="14" r="5" fill="rgba(255,255,255,0.9)"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize}" viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="13" fill="rgba(95,125,149,0.25)" stroke="rgba(95,125,149,0.5)" stroke-width="1"/>
+          <circle cx="14" cy="14" r="9"  fill="rgba(95,125,149,0.65)" stroke="white" stroke-width="1.5"/>
+          <circle cx="14" cy="14" r="3.5" fill="rgba(255,255,255,0.85)"/>
         </svg>`;
       Object.assign(blogDotEl.style, {
-        width: bSize + "px", height: bSize*1.3 + "px",
+        width: bSize + "px", height: bSize + "px",
         cursor: "pointer", pointerEvents: "auto",
-        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.45))"
+        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))"
       });
 
-      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "bottom" })
+      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "center" })
         .setLngLat(blogCoords).addTo(map);
 
       const popupDiv = document.createElement("div");
