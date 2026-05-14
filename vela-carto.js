@@ -747,37 +747,39 @@ window.VelaCarto = {
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
       /* ---- Marqueur bateau SVG voilier rotatif ---- */
-      const boatSize = isMini ? 36 : 52;
+      const boatSize = isMini ? 36 : 56;
 
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-24 -28 48 56">
+        viewBox="-26 -30 52 60">
 
         <defs>
           <filter id="bs" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="rgba(0,0,0,0.55)"/>
+            <feDropShadow dx="0" dy="1.5" stdDeviation="3" flood-color="rgba(0,0,0,0.5)"/>
           </filter>
         </defs>
 
-        <!-- Coque vue du dessus — fuseau fin, proue en haut -->
-        <ellipse cx="0" cy="4" rx="4" ry="16"
+        <!-- Coque vue du dessus — nez très pointu en haut, fesses larges en bas -->
+        <path d="M 0,-22
+                 C 2,-14  5,0  6,10
+                 C 6,16   3,18  0,19
+                 C -3,18 -6,16 -6,10
+                 C -5,0  -2,-14  0,-22 Z"
           fill="#5F7D95" stroke="white" stroke-width="1.2"
           filter="url(#bs)"/>
 
-        <!-- Mât — point central sur la coque -->
-        <circle cx="0" cy="-2" r="1.2" fill="white"/>
+        <!-- Mât — point gris au centre de la coque -->
+        <circle cx="0" cy="-2" r="1.8" fill="#aabcca" stroke="white" stroke-width="0.6"/>
 
-        <!-- Grande voile — trait courbe depuis le mât vers la poupe bâbord
-             Vue d'en haut : un arc fin qui part du mât et file vers l'arrière -->
-        <path d="M 0,-2 Q -8,6 -7,14"
-          fill="none" stroke="white" stroke-width="1.8"
-          stroke-linecap="round"/>
+        <!-- Grande voile — arc depuis le mât vers la poupe bâbord (gauche) -->
+        <path d="M 0,-2 Q -11,5 -9,16"
+          fill="none" stroke="white" stroke-width="2"
+          stroke-linecap="round" opacity="0.95"/>
 
-        <!-- Génois — arc fin et bombé côté tribord, proche de la coque
-             Part de l'étrave, se gonfle légèrement à tribord, revient au mât -->
-        <path d="M 0,-18 Q 7,-10 0,-2"
+        <!-- Génois — arc bombé depuis l'étrave jusqu'au mât, même côté bâbord -->
+        <path d="M 0,-20 Q -9,-11 0,-2"
           fill="none" stroke="white" stroke-width="1.6"
-          stroke-linecap="round" opacity="0.9"/>
+          stroke-linecap="round" opacity="0.85"/>
 
       </svg>`;
 
@@ -806,7 +808,7 @@ window.VelaCarto = {
 
       window._velaComputeBearing = computeBearing;
 
-      /* ---- Blog marker ---- */
+      /* ---- Blog marker custom SVG ---- */
       const blogCoords = [9.10300, 43.75930];
       const blogProps  = {
         title  : "Déploiement & récupération flotteurs Argo BGC",
@@ -816,7 +818,28 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      const blogMarker = new maptilersdk.Marker({ color: "#5F7D95", scale: isMini ? 0.6 : 0.8 })
+      // Marqueur personnalisé : cercle bleu transparent + point blanc au centre
+      const blogDotEl = document.createElement("div");
+      const bSize = isMini ? 22 : 28;
+      blogDotEl.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize}" viewBox="0 0 28 28">
+          <!-- Halo externe très transparent -->
+          <circle cx="14" cy="14" r="13" fill="rgba(95,125,149,0.25)" stroke="rgba(95,125,149,0.5)" stroke-width="1"/>
+          <!-- Cercle principal bleu semi-transparent -->
+          <circle cx="14" cy="14" r="9" fill="rgba(95,125,149,0.65)" stroke="white" stroke-width="1.5"/>
+          <!-- Point blanc central légèrement transparent -->
+          <circle cx="14" cy="14" r="3.5" fill="rgba(255,255,255,0.85)"/>
+        </svg>`;
+      Object.assign(blogDotEl.style, {
+        width: bSize + "px", height: bSize + "px",
+        cursor: "pointer", pointerEvents: "auto",
+        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))",
+        transition: "transform .2s"
+      });
+      blogDotEl.onmouseenter = () => blogDotEl.style.transform = "scale(1.2)";
+      blogDotEl.onmouseleave = () => blogDotEl.style.transform = "scale(1)";
+
+      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "center" })
         .setLngLat(blogCoords).addTo(map);
 
       const popupDiv = document.createElement("div");
@@ -850,8 +873,8 @@ window.VelaCarto = {
       }
 
       let popupVis = false;
-      blogMarker.getElement().addEventListener("mouseenter", () => { popupDiv.style.display = "block"; popupVis = true; positionPopup(); });
-      blogMarker.getElement().addEventListener("mouseleave", () => { setTimeout(() => { if (!popupDiv.matches(":hover")) { popupDiv.style.display = "none"; popupVis = false; } }, 100); });
+      blogDotEl.addEventListener("mouseenter", () => { popupDiv.style.display = "block"; popupVis = true; positionPopup(); });
+      blogDotEl.addEventListener("mouseleave", () => { setTimeout(() => { if (!popupDiv.matches(":hover")) { popupDiv.style.display = "none"; popupVis = false; } }, 100); });
       popupDiv.addEventListener("mouseenter", () => { popupDiv.style.display = "block"; });
       popupDiv.addEventListener("mouseleave", () => { popupDiv.style.display = "none"; popupVis = false; });
       map.on("move", () => { if (popupVis) positionPopup(); });
