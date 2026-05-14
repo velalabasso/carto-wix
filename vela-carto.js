@@ -429,8 +429,8 @@ window.VelaCarto = {
           <div style="display:flex;align-items:center;margin-bottom:6px;cursor:pointer;user-select:none;" data-ri="${ri}">
             <div class="vela-pill" data-active="true" style="
               width:30px;height:16px;border-radius:99px;flex-shrink:0;
-              background:rgba(95,125,149,0.7);
-              box-shadow:0 0 6px rgba(95,125,149,0.5);
+              background:#2563eb;
+              box-shadow:0 0 6px rgba(37,99,235,0.6);
               position:relative;margin-right:8px;
               transition:background .2s,box-shadow .2s;cursor:pointer;">
               <div class="vela-knob" style="
@@ -455,8 +455,8 @@ window.VelaCarto = {
         row.addEventListener("click", () => {
           const active = pill.dataset.active !== "true";
           pill.dataset.active = active;
-          pill.style.background = active ? "rgba(95,125,149,0.7)" : "rgba(180,180,180,0.3)";
-          pill.style.boxShadow  = active ? "0 0 6px rgba(95,125,149,0.5)" : "none";
+          pill.style.background = active ? "#2563eb" : "rgba(180,180,180,0.3)";
+          pill.style.boxShadow  = active ? "0 0 6px rgba(37,99,235,0.6)" : "none";
           knob.style.transform  = active ? "translateX(14px)" : "translateX(1px)";
           sciRows[ri].keys.forEach(k => sciVis[k] = active);
           renderScience();
