@@ -752,70 +752,46 @@ window.VelaCarto = {
       // Photo : bateau orienté proue en bas-gauche, poupe en haut-droite
       // On dessine avec la proue vers le HAUT (nord=0°), la rotation JS fera le reste
       // viewBox centrée sur le mât (~centre de gravité visuel)
+      /* ---- Marqueur bateau SVG — voilier plaisance simple, blanc ---- */
+      const boatSize = isMini ? 40 : 60;
+
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-40 -40 80 80">
+        viewBox="-20 -30 40 60">
 
         <defs>
-          <filter id="bsf" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.6)"/>
+          <filter id="bsf" x="-60%" y="-60%" width="220%" height="220%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
           </filter>
-          <clipPath id="spiClip">
-            <ellipse cx="20" cy="6" rx="18" ry="20"/>
-          </clipPath>
         </defs>
 
-        <!-- ======= SPINNAKER — côté tribord (droite), proche de la coque ======= -->
-        <ellipse cx="20" cy="6" rx="18" ry="20"
-          fill="#22c55e" filter="url(#bsf)" opacity="0.95"/>
-
-        <g clip-path="url(#spiClip)">
-          <polygon points="20,6  36,-14  40,-4"   fill="white" opacity="0.75"/>
-          <polygon points="20,6  28,-14  38,-6"   fill="white" opacity="0.7"/>
-          <polygon points="20,6  14,-14  22,-16"  fill="white" opacity="0.72"/>
-          <polygon points="20,6   4,-10   6,4"    fill="white" opacity="0.7"/>
-          <polygon points="20,6   2,8     4,20"   fill="white" opacity="0.72"/>
-          <polygon points="20,6  10,26   20,28"   fill="white" opacity="0.7"/>
-          <polygon points="20,6  30,26   38,18"   fill="white" opacity="0.72"/>
-        </g>
-
-        <ellipse cx="20" cy="6" rx="18" ry="20"
-          fill="none" stroke="#16a34a" stroke-width="0.8" opacity="0.7"/>
-
-        <!-- ======= DRISSES spi ======= -->
-        <line x1="2" y1="-18" x2="4" y2="-12"
-          stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>
-        <line x1="2" y1="-18" x2="38" y2="14"
-          stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
-        <line x1="2" y1="-18" x2="16" y2="26"
-          stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
-
-        <!-- ======= COQUE ======= -->
-        <path d="
-          M 0,-22
-          C 2,-18  8,-8  12,2
-          C 16,10  16,18  14,24
-          C 10,30  4,32   0,32
-          C -4,32 -10,30 -14,24
-          C -16,18 -14,8 -8,0
-          C -4,-8  -1,-16  0,-22 Z"
-          fill="white" stroke="#cccccc" stroke-width="0.8"
+        <!-- Coque blanche — proue pointue en haut, poupe arrondie en bas -->
+        <path d="M 0,-26
+                 C 0.5,-20  3,-10  4,0
+                 C 5,8     5,14   4,18
+                 C 2,22    0,23   0,23
+                 C 0,23   -2,22  -4,18
+                 C -5,14  -5,8   -4,0
+                 C -3,-10 -0.5,-20  0,-26 Z"
+          fill="white" stroke="#5F7D95" stroke-width="1.4"
           filter="url(#bsf)"/>
 
-        <!-- Grand-voile -->
-        <polygon points="0,-20  -13,22  -2,22"
-          fill="#1a1a2e" opacity="0.85"/>
-
-        <!-- Bout-dehors -->
-        <line x1="0" y1="-18" x2="2" y2="-23"
-          stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+        <!-- Ligne de pont -->
+        <line x1="0" y1="-24" x2="0" y2="20"
+          stroke="#5F7D95" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.3"/>
 
         <!-- Mât -->
-        <circle cx="0" cy="-4" r="1.8" fill="#aabcca" stroke="white" stroke-width="0.6"/>
+        <circle cx="0" cy="-8" r="1.4" fill="#aabcca" stroke="white" stroke-width="0.5"/>
 
-        <!-- Cockpit -->
-        <ellipse cx="8" cy="20" rx="5" ry="4"
-          fill="none" stroke="#aaaaaa" stroke-width="0.7" opacity="0.6"/>
+        <!-- Grande voile — arc bâbord -->
+        <path d="M 0,-8 Q -7,2 -6,18"
+          fill="none" stroke="#5F7D95" stroke-width="1.6"
+          stroke-linecap="round" opacity="0.85"/>
+
+        <!-- Génois — arc avant bâbord -->
+        <path d="M 0,-24 Q -7,-16 0,-8"
+          fill="none" stroke="#5F7D95" stroke-width="1.3"
+          stroke-linecap="round" opacity="0.75"/>
 
       </svg>`;
 
