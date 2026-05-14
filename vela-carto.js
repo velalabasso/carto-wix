@@ -747,11 +747,6 @@ window.VelaCarto = {
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
       /* ---- Marqueur bateau SVG — tracé fidèle de la photo drone ---- */
-      const boatSize = isMini ? 44 : 70;
-
-      // Photo : bateau orienté proue en bas-gauche, poupe en haut-droite
-      // On dessine avec la proue vers le HAUT (nord=0°), la rotation JS fera le reste
-      // viewBox centrée sur le mât (~centre de gravité visuel)
       /* ---- Marqueur bateau SVG — voilier plaisance simple, blanc ---- */
       const boatSize = isMini ? 40 : 60;
 
