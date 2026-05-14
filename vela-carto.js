@@ -481,11 +481,12 @@ window.VelaCarto = {
         <div><span style="color:#c8dcea">Date</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
-        <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>`;
+        <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>
+        <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>`;
       bottomLeftContainer.appendChild(navPanel);
     }
 
-    function updateNavPanel(p) {
+    function updateNavPanel(p, miles) {
       if (!navPanel || !p) return;
       const d = new Date(p.time);
       const dateStr = d.toLocaleString("fr-FR", {
@@ -496,6 +497,8 @@ window.VelaCarto = {
       document.getElementById("vn-sog").textContent    = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
       document.getElementById("vn-tws").textContent    = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
       document.getElementById("vn-allure").textContent = p.allure ? allureFr(p.allure) : "—";
+      const milesEl = document.getElementById("vn-miles");
+      if (milesEl) milesEl.textContent = (miles !== undefined && miles > 0) ? miles.toFixed(1) : "—";
       navPanel.style.display = "block";
     }
 
@@ -620,13 +623,29 @@ window.VelaCarto = {
       const p = hourlyPts[sliderIdx];
       if (boatMarker) boatMarker.setLngLat([p.lon, p.lat]);
 
-      // Rotation du voilier selon le cap entre le point précédent et le point actuel
+      // Rotation du voilier — on cible le div intérieur, pas le wrapper maptiler
       if (boatMarker && sliderIdx > 0 && window._velaComputeBearing) {
         const prev = hourlyPts[sliderIdx - 1];
         const bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
-        const el = boatMarker.getElement();
-        el.style.transform = `rotate(${bearing}deg)`;
+        const innerEl = boatMarker.getElement().querySelector("div");
+        if (innerEl) innerEl.style.transform = `rotate(${bearing}deg)`;
       }
+
+      // Miles parcourus depuis le début jusqu'au slot courant (sur allPoints)
+      let milesDone = 0;
+      if (allPoints.length > 1) {
+        const cutMs = p.timestampMs;
+        const slice = allPoints.filter(pt => pt.timestampMs <= cutMs);
+        for (let i = 1; i < slice.length; i++) {
+          const d = haversine_nm_js(
+            slice[i-1].lat, slice[i-1].lon,
+            slice[i].lat,   slice[i].lon
+          );
+          if (d < 1) milesDone += d;
+        }
+      }
+
+      updateNavPanel(p, milesDone);
 
       if (timeLabel) {
         const d = new Date(p.time);
@@ -636,13 +655,20 @@ window.VelaCarto = {
         }) + " UTC";
       }
 
-      updateNavPanel(p);
-
       if (!centeredOnce) {
         const last = hourlyPts[hourlyPts.length - 1];
         map.setCenter([last.lon, last.lat]);
         centeredOnce = true;
       }
+    }
+
+    // Haversine en JS pour updateBoatUI (indépendant du scope Python)
+    function haversine_nm_js(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toR = d => d * Math.PI / 180;
+      const dphi = toR(lat2 - lat1); const dlam = toR(lon2 - lon1);
+      const a = Math.sin(dphi/2)**2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dlam/2)**2;
+      return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
     }
 
     /* ===================== REFRESH ===================== */
