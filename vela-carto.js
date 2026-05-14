@@ -377,6 +377,7 @@ window.VelaCarto = {
       });
       navPanel.innerHTML = `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:5px;">Navigation</div>
+        <div><span style="color:#c8dcea">Date</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>`;
@@ -385,6 +386,12 @@ window.VelaCarto = {
 
     function updateNavPanel(p) {
       if (!navPanel || !p) return;
+      const d = new Date(p.time);
+      const dateStr = d.toLocaleString("fr-FR", {
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit", timeZone: "UTC"
+      }) + " UTC";
+      document.getElementById("vn-date").textContent   = dateStr;
       document.getElementById("vn-sog").textContent    = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
       document.getElementById("vn-tws").textContent    = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
       document.getElementById("vn-allure").textContent = p.allure ? allureFr(p.allure) : "—";
@@ -416,23 +423,43 @@ window.VelaCarto = {
       let html = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:8px;">Science</div>`;
       sciRows.forEach((row, ri) => {
         const swatch = row.type === "dot"
-          ? `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${row.color};
-               margin-right:7px;flex-shrink:0;vertical-align:middle;border:1.5px solid rgba(255,255,255,0.35)"></span>`
-          : `<span style="display:inline-block;width:20px;height:3px;background:${row.color};border-radius:2px;
-               margin-right:7px;flex-shrink:0;vertical-align:middle;"></span>`;
+          ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${row.color};margin-right:7px;flex-shrink:0;vertical-align:middle;border:1.5px solid rgba(255,255,255,0.35)"></span>`
+          : `<span style="display:inline-block;width:16px;height:3px;background:${row.color};border-radius:2px;margin-right:7px;flex-shrink:0;vertical-align:middle;"></span>`;
         html += `
-          <label style="display:flex;align-items:center;cursor:pointer;user-select:none;margin-bottom:3px;">
-            <input type="checkbox" data-ri="${ri}" checked
-              style="margin-right:6px;accent-color:${row.color};cursor:pointer;width:13px;height:13px;">
-            ${swatch}<span>${row.label}</span>
-          </label>`;
+          <div style="display:flex;align-items:center;margin-bottom:6px;cursor:pointer;user-select:none;" data-ri="${ri}">
+            <div class="vela-pill" data-active="true" style="
+              width:30px;height:16px;border-radius:99px;flex-shrink:0;
+              background:${row.color};
+              box-shadow:0 0 6px ${row.color}88;
+              position:relative;margin-right:8px;
+              transition:background .2s,box-shadow .2s;cursor:pointer;">
+              <div class="vela-knob" style="
+                position:absolute;top:2px;
+                width:12px;height:12px;border-radius:50%;
+                background:white;
+                transform:translateX(14px);
+                transition:transform .2s;
+                box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+            </div>
+            ${swatch}<span style="font-size:12px;">${row.label}</span>
+          </div>`;
       });
       sciPanel.innerHTML = html;
       bottomLeftContainer.appendChild(sciPanel);
 
-      sciPanel.querySelectorAll("input[type=checkbox]").forEach(cb => {
-        cb.addEventListener("change", () => {
-          sciRows[Number(cb.dataset.ri)].keys.forEach(k => sciVis[k] = cb.checked);
+      // Listeners sur les toggles
+      sciPanel.querySelectorAll("[data-ri]").forEach(row => {
+        const pill = row.querySelector(".vela-pill");
+        const knob = row.querySelector(".vela-knob");
+        const ri   = Number(row.dataset.ri);
+        const color = sciRows[ri].color;
+        row.addEventListener("click", () => {
+          const active = pill.dataset.active !== "true";
+          pill.dataset.active = active;
+          pill.style.background    = active ? color : "rgba(255,255,255,0.18)";
+          pill.style.boxShadow     = active ? `0 0 6px ${color}88` : "none";
+          knob.style.transform     = active ? "translateX(14px)" : "translateX(1px)";
+          sciRows[ri].keys.forEach(k => sciVis[k] = active);
           renderScience();
         });
       });
