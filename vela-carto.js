@@ -746,40 +746,53 @@ window.VelaCarto = {
       addPtLayer("sci-pt-net",      "sci-pt-net-circle",      SCIENCE_PT.net.color);
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
-      /* ---- Marqueur bateau SVG voilier rotatif ---- */
+      /* ---- Marqueur bateau SVG voilier de plaisance ---- */
       const boatSize = isMini ? 36 : 56;
 
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-26 -30 52 60">
+        viewBox="-26 -32 52 64">
 
         <defs>
-          <filter id="bs" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="1.5" stdDeviation="3" flood-color="rgba(0,0,0,0.5)"/>
+          <filter id="bs" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
           </filter>
+          <!-- Dégradé vert→rouge pour le spi -->
+          <linearGradient id="spiGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#22c55e"/>
+            <stop offset="100%" stop-color="#ef4444"/>
+          </linearGradient>
         </defs>
 
-        <!-- Coque vue du dessus — nez très pointu en haut, fesses larges en bas -->
-        <path d="M 0,-22
-                 C 2,-14  5,0  6,10
-                 C 6,16   3,18  0,19
-                 C -3,18 -6,16 -6,10
-                 C -5,0  -2,-14  0,-22 Z"
-          fill="#5F7D95" stroke="white" stroke-width="1.2"
+        <!-- Spinnaker — bulle ronde devant la proue, vert à gauche rouge à droite -->
+        <ellipse cx="0" cy="-26" rx="9" ry="7"
+          fill="url(#spiGrad)" opacity="0.88"
+          stroke="white" stroke-width="0.8"/>
+
+        <!-- Étai spi — fin trait du mât à la tête du spi -->
+        <line x1="0" y1="-6" x2="0" y2="-21"
+          stroke="rgba(255,255,255,0.5)" stroke-width="0.7"/>
+
+        <!-- Coque — forme voilier de plaisance, proue fine en haut, cockpit arrière -->
+        <path d="M 0,-20
+                 C 1.5,-14  4,0  5,8
+                 C 5.5,14   4,17  2,19
+                 L -2,19
+                 C -4,17 -5.5,14 -5,8
+                 C -4,0  -1.5,-14  0,-20 Z"
+          fill="white" stroke="#5F7D95" stroke-width="1.2"
           filter="url(#bs)"/>
 
-        <!-- Mât — point gris au centre de la coque -->
-        <circle cx="0" cy="-2" r="1.8" fill="#aabcca" stroke="white" stroke-width="0.6"/>
+        <!-- Ligne de flottaison — séparation blanc/bleu sur la coque -->
+        <path d="M -5,10 C -4,12 4,12 5,10"
+          fill="none" stroke="#5F7D95" stroke-width="1" opacity="0.6"/>
 
-        <!-- Grande voile — arc depuis le mât vers la poupe bâbord (gauche) -->
-        <path d="M 0,-2 Q -11,5 -9,16"
-          fill="none" stroke="white" stroke-width="2"
-          stroke-linecap="round" opacity="0.95"/>
+        <!-- Mât — trait fin blanc du centre à la tête -->
+        <line x1="0" y1="-18" x2="0" y2="8"
+          stroke="#5F7D95" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
 
-        <!-- Génois — arc bombé depuis l'étrave jusqu'au mât, même côté bâbord -->
-        <path d="M 0,-20 Q -9,-11 0,-2"
-          fill="none" stroke="white" stroke-width="1.6"
-          stroke-linecap="round" opacity="0.85"/>
+        <!-- Point mât — gris au centre -->
+        <circle cx="0" cy="-6" r="1.5" fill="#aabcca" stroke="white" stroke-width="0.5"/>
 
       </svg>`;
 
@@ -818,26 +831,20 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      // Marqueur personnalisé : cercle bleu transparent + point blanc au centre
+      // Marqueur blog — même forme épingle maptiler, couleur #5F7D95, sans animation
       const blogDotEl = document.createElement("div");
       const bSize = isMini ? 22 : 28;
       blogDotEl.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize}" viewBox="0 0 28 28">
-          <!-- Halo externe très transparent -->
           <circle cx="14" cy="14" r="13" fill="rgba(95,125,149,0.25)" stroke="rgba(95,125,149,0.5)" stroke-width="1"/>
-          <!-- Cercle principal bleu semi-transparent -->
           <circle cx="14" cy="14" r="9" fill="rgba(95,125,149,0.65)" stroke="white" stroke-width="1.5"/>
-          <!-- Point blanc central légèrement transparent -->
           <circle cx="14" cy="14" r="3.5" fill="rgba(255,255,255,0.85)"/>
         </svg>`;
       Object.assign(blogDotEl.style, {
         width: bSize + "px", height: bSize + "px",
         cursor: "pointer", pointerEvents: "auto",
-        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))",
-        transition: "transform .2s"
+        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))"
       });
-      blogDotEl.onmouseenter = () => blogDotEl.style.transform = "scale(1.2)";
-      blogDotEl.onmouseleave = () => blogDotEl.style.transform = "scale(1)";
 
       const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "center" })
         .setLngLat(blogCoords).addTo(map);
