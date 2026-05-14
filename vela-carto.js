@@ -853,22 +853,22 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      // Marqueur blog — trois cercles concentriques bleu/blanc
+      // Marqueur blog — épingle en V, petite, bleu #5F7D95
       const blogDotEl = document.createElement("div");
-      const bSize = isMini ? 18 : 24;
+      const bSize = isMini ? 14 : 20;
       blogDotEl.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize}" viewBox="0 0 28 28">
-          <circle cx="14" cy="14" r="13" fill="rgba(95,125,149,0.25)" stroke="rgba(95,125,149,0.5)" stroke-width="1"/>
-          <circle cx="14" cy="14" r="9"  fill="rgba(95,125,149,0.65)" stroke="white" stroke-width="1.5"/>
-          <circle cx="14" cy="14" r="3.5" fill="rgba(255,255,255,0.85)"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${Math.round(bSize*1.35)}" viewBox="0 0 20 27">
+          <path d="M10,1 C5.5,1 2,4.5 2,9 C2,15 10,26 10,26 C10,26 18,15 18,9 C18,4.5 14.5,1 10,1 Z"
+            fill="rgba(95,125,149,0.85)" stroke="white" stroke-width="1.2"/>
+          <circle cx="10" cy="9" r="3.5" fill="rgba(255,255,255,0.9)"/>
         </svg>`;
       Object.assign(blogDotEl.style, {
-        width: bSize + "px", height: bSize + "px",
+        width: bSize + "px", height: Math.round(bSize*1.35) + "px",
         cursor: "pointer", pointerEvents: "auto",
-        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))"
+        filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))"
       });
 
-      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "center" })
+      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "bottom" })
         .setLngLat(blogCoords).addTo(map);
 
       const popupDiv = document.createElement("div");
