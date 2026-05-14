@@ -746,53 +746,58 @@ window.VelaCarto = {
       addPtLayer("sci-pt-net",      "sci-pt-net-circle",      SCIENCE_PT.net.color);
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
-      /* ---- Marqueur bateau SVG voilier de plaisance ---- */
-      const boatSize = isMini ? 36 : 56;
+      /* ---- Marqueur bateau SVG — inspiré de la photo drone ---- */
+      const boatSize = isMini ? 40 : 60;
 
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-26 -32 52 64">
+        viewBox="-28 -36 56 68">
 
         <defs>
           <filter id="bs" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.55)"/>
           </filter>
-          <!-- Dégradé vert→rouge pour le spi -->
-          <linearGradient id="spiGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#22c55e"/>
-            <stop offset="100%" stop-color="#ef4444"/>
-          </linearGradient>
+          <!-- Dégradé spi vert→blanc -->
+          <radialGradient id="spiGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="white" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#22c55e" stop-opacity="0.9"/>
+          </radialGradient>
         </defs>
 
-        <!-- Spinnaker — bulle ronde devant la proue, vert à gauche rouge à droite -->
-        <ellipse cx="0" cy="-26" rx="9" ry="7"
-          fill="url(#spiGrad)" opacity="0.88"
-          stroke="white" stroke-width="0.8"/>
+        <!-- Spi — grand demi-cercle bombé devant la proue, vert/blanc -->
+        <ellipse cx="-8" cy="-30" rx="14" ry="11"
+          fill="url(#spiGrad)"
+          stroke="#22c55e" stroke-width="0.8" opacity="0.92"/>
 
-        <!-- Étai spi — fin trait du mât à la tête du spi -->
-        <line x1="0" y1="-6" x2="0" y2="-21"
-          stroke="rgba(255,255,255,0.5)" stroke-width="0.7"/>
+        <!-- Drisses spi — deux fils fins du bout-dehors au spi -->
+        <line x1="0" y1="-20" x2="-8" y2="-21"
+          stroke="rgba(255,255,255,0.5)" stroke-width="0.6"/>
+        <line x1="0" y1="-20" x2="-16" y2="-26"
+          stroke="rgba(255,255,255,0.4)" stroke-width="0.6"/>
 
-        <!-- Coque — forme voilier de plaisance, proue fine en haut, cockpit arrière -->
-        <path d="M 0,-20
-                 C 1.5,-14  4,0  5,8
-                 C 5.5,14   4,17  2,19
-                 L -2,19
-                 C -4,17 -5.5,14 -5,8
-                 C -4,0  -1.5,-14  0,-20 Z"
-          fill="white" stroke="#5F7D95" stroke-width="1.2"
+        <!-- Coque — large à l'arrière, proue en V fin
+             Vue du dessus : forme de bateau de plaisance -->
+        <path d="M 0,-22
+                 C 0.8,-16  4,-4  6,6
+                 C 8,14    7,18   5,20
+                 L -5,20
+                 C -7,18  -8,14  -6,6
+                 C -4,-4  -0.8,-16  0,-22 Z"
+          fill="white" stroke="#5F7D95" stroke-width="1.3"
           filter="url(#bs)"/>
 
-        <!-- Ligne de flottaison — séparation blanc/bleu sur la coque -->
-        <path d="M -5,10 C -4,12 4,12 5,10"
-          fill="none" stroke="#5F7D95" stroke-width="1" opacity="0.6"/>
+        <!-- Pont — détail cockpit arrière -->
+        <ellipse cx="0" cy="14" rx="3.5" ry="2.5"
+          fill="none" stroke="#5F7D95" stroke-width="0.8" opacity="0.5"/>
 
-        <!-- Mât — trait fin blanc du centre à la tête -->
-        <line x1="0" y1="-18" x2="0" y2="8"
-          stroke="#5F7D95" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
+        <!-- Mât au centre -->
+        <line x1="0" y1="-18" x2="0" y2="10"
+          stroke="#5F7D95" stroke-width="0.9" stroke-linecap="round" opacity="0.6"/>
+        <circle cx="0" cy="-4" r="1.6" fill="#aabcca" stroke="white" stroke-width="0.5"/>
 
-        <!-- Point mât — gris au centre -->
-        <circle cx="0" cy="-6" r="1.5" fill="#aabcca" stroke="white" stroke-width="0.5"/>
+        <!-- Bout-dehors — tangon spi vers l'avant bâbord -->
+        <line x1="0" y1="-20" x2="-10" y2="-24"
+          stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
 
       </svg>`;
 
@@ -818,7 +823,6 @@ window.VelaCarto = {
                 - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
         return (toDeg(Math.atan2(y, x)) + 360) % 360;
       }
-
       window._velaComputeBearing = computeBearing;
 
       /* ---- Blog marker custom SVG ---- */
@@ -831,22 +835,24 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      // Marqueur blog — même forme épingle maptiler, couleur #5F7D95, sans animation
+      // Marqueur blog — épingle en V pointée vers le bas, bleu #5F7D95
       const blogDotEl = document.createElement("div");
-      const bSize = isMini ? 22 : 28;
+      const bSize = isMini ? 24 : 32;
       blogDotEl.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize}" viewBox="0 0 28 28">
-          <circle cx="14" cy="14" r="13" fill="rgba(95,125,149,0.25)" stroke="rgba(95,125,149,0.5)" stroke-width="1"/>
-          <circle cx="14" cy="14" r="9" fill="rgba(95,125,149,0.65)" stroke="white" stroke-width="1.5"/>
-          <circle cx="14" cy="14" r="3.5" fill="rgba(255,255,255,0.85)"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="${bSize}" height="${bSize*1.3}" viewBox="0 0 32 42">
+          <!-- Corps de l'épingle -->
+          <path d="M16,2 C9,2 4,7 4,14 C4,22 16,40 16,40 C16,40 28,22 28,14 C28,7 23,2 16,2 Z"
+            fill="rgba(95,125,149,0.85)" stroke="white" stroke-width="1.5"/>
+          <!-- Point blanc central -->
+          <circle cx="16" cy="14" r="5" fill="rgba(255,255,255,0.9)"/>
         </svg>`;
       Object.assign(blogDotEl.style, {
-        width: bSize + "px", height: bSize + "px",
+        width: bSize + "px", height: bSize*1.3 + "px",
         cursor: "pointer", pointerEvents: "auto",
-        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.4))"
+        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.45))"
       });
 
-      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "center" })
+      const blogMarker = new maptilersdk.Marker({ element: blogDotEl, anchor: "bottom" })
         .setLngLat(blogCoords).addTo(map);
 
       const popupDiv = document.createElement("div");
