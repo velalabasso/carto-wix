@@ -746,58 +746,94 @@ window.VelaCarto = {
       addPtLayer("sci-pt-net",      "sci-pt-net-circle",      SCIENCE_PT.net.color);
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
-      /* ---- Marqueur bateau SVG — inspiré de la photo drone ---- */
-      const boatSize = isMini ? 40 : 60;
+      /* ---- Marqueur bateau SVG — tracé fidèle de la photo drone ---- */
+      const boatSize = isMini ? 44 : 70;
 
+      // Photo : bateau orienté proue en bas-gauche, poupe en haut-droite
+      // On dessine avec la proue vers le HAUT (nord=0°), la rotation JS fera le reste
+      // viewBox centrée sur le mât (~centre de gravité visuel)
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-28 -36 56 68">
+        viewBox="-40 -40 80 80">
 
         <defs>
-          <filter id="bs" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.55)"/>
+          <filter id="bsf" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.6)"/>
           </filter>
-          <!-- Dégradé spi vert→blanc -->
-          <radialGradient id="spiGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="white" stop-opacity="0.95"/>
-            <stop offset="100%" stop-color="#22c55e" stop-opacity="0.9"/>
-          </radialGradient>
+
+          <!-- Spi : rayons alternés vert clair / blanc -->
+          <!-- On fait un clipPath circulaire pour le spi -->
+          <clipPath id="spiClip">
+            <ellipse cx="-28" cy="14" rx="20" ry="22"/>
+          </clipPath>
         </defs>
 
-        <!-- Spi — grand demi-cercle bombé devant la proue, vert/blanc -->
-        <ellipse cx="-8" cy="-30" rx="14" ry="11"
-          fill="url(#spiGrad)"
-          stroke="#22c55e" stroke-width="0.8" opacity="0.92"/>
+        <!-- ======= SPINNAKER ======= -->
+        <!-- Ellipse de base du spi -->
+        <ellipse cx="-28" cy="14" rx="20" ry="22"
+          fill="#22c55e" filter="url(#bsf)" opacity="0.95"/>
 
-        <!-- Drisses spi — deux fils fins du bout-dehors au spi -->
-        <line x1="0" y1="-20" x2="-8" y2="-21"
-          stroke="rgba(255,255,255,0.5)" stroke-width="0.6"/>
-        <line x1="0" y1="-20" x2="-16" y2="-26"
-          stroke="rgba(255,255,255,0.4)" stroke-width="0.6"/>
+        <!-- Rayons alternés blancs par-dessus — comme les rayons rouges de la photo -->
+        <!-- On simule les bandes radiales avec des triangles depuis le centre du spi -->
+        <g clip-path="url(#spiClip)">
+          <!-- Centre du spi = -28, 14 -->
+          <!-- Rayon 1 -->
+          <polygon points="-28,14 -10,-8 -5,2"   fill="white" opacity="0.75"/>
+          <!-- Rayon 2 -->
+          <polygon points="-28,14 -20,-8 -8,-10"  fill="white" opacity="0.7"/>
+          <!-- Rayon 3 -->
+          <polygon points="-28,14 -34,-8 -22,-10" fill="white" opacity="0.72"/>
+          <!-- Rayon 4 -->
+          <polygon points="-28,14 -46,-4 -42,8"   fill="white" opacity="0.7"/>
+          <!-- Rayon 5 -->
+          <polygon points="-28,14 -48,18 -44,28"  fill="white" opacity="0.72"/>
+          <!-- Rayon 6 -->
+          <polygon points="-28,14 -40,36 -28,38"  fill="white" opacity="0.7"/>
+          <!-- Rayon 7 -->
+          <polygon points="-28,14 -16,36 -8,30"   fill="white" opacity="0.72"/>
+        </g>
 
-        <!-- Coque — large à l'arrière, proue en V fin
-             Vue du dessus : forme de bateau de plaisance -->
-        <path d="M 0,-22
-                 C 0.8,-16  4,-4  6,6
-                 C 8,14    7,18   5,20
-                 L -5,20
-                 C -7,18  -8,14  -6,6
-                 C -4,-4  -0.8,-16  0,-22 Z"
-          fill="white" stroke="#5F7D95" stroke-width="1.3"
-          filter="url(#bs)"/>
+        <!-- Contour spi -->
+        <ellipse cx="-28" cy="14" rx="20" ry="22"
+          fill="none" stroke="#16a34a" stroke-width="0.8" opacity="0.7"/>
 
-        <!-- Pont — détail cockpit arrière -->
-        <ellipse cx="0" cy="14" rx="3.5" ry="2.5"
-          fill="none" stroke="#5F7D95" stroke-width="0.8" opacity="0.5"/>
+        <!-- ======= DRISSES spi — fils du bout-dehors au spi ======= -->
+        <line x1="-4" y1="-18" x2="-10" y2="-6"
+          stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>
+        <line x1="-4" y1="-18" x2="-48" y2="18"
+          stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
+        <line x1="-4" y1="-18" x2="-20" y2="36"
+          stroke="rgba(255,255,255,0.4)" stroke-width="0.7"/>
 
-        <!-- Mât au centre -->
-        <line x1="0" y1="-18" x2="0" y2="10"
-          stroke="#5F7D95" stroke-width="0.9" stroke-linecap="round" opacity="0.6"/>
-        <circle cx="0" cy="-4" r="1.6" fill="#aabcca" stroke="white" stroke-width="0.5"/>
+        <!-- ======= COQUE — forme exacte photo ======= -->
+        <!-- Poupe (arrière) : demi-cercle large en haut-droite de la coque -->
+        <!-- Proue (avant)  : V pointu vers le bas-gauche -->
+        <!-- Dans notre repère : proue = haut, poupe = bas-large -->
+        <path d="
+          M 0,-22
+          C 2,-18  8,-8  12,2
+          C 16,10  16,18  14,24
+          C 10,30  4,32   0,32
+          C -4,32 -10,30 -14,24
+          C -16,18 -14,8 -8,0
+          C -4,-8  -1,-16  0,-22 Z"
+          fill="white" stroke="#cccccc" stroke-width="0.8"
+          filter="url(#bsf)"/>
 
-        <!-- Bout-dehors — tangon spi vers l'avant bâbord -->
-        <line x1="0" y1="-20" x2="-10" y2="-24"
-          stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
+        <!-- Grand-voile — triangle noir le long du bord bâbord de la coque -->
+        <polygon points="0,-20  -13,22  -2,22"
+          fill="#1a1a2e" opacity="0.85"/>
+
+        <!-- Bout-dehors — tangon diagonal vers bâbord avant -->
+        <line x1="0" y1="-18" x2="-4" y2="-22"
+          stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+
+        <!-- Mât -->
+        <circle cx="0" cy="-4" r="1.8" fill="#aabcca" stroke="white" stroke-width="0.6"/>
+
+        <!-- Cockpit — zone arrière de la coque -->
+        <ellipse cx="8" cy="20" rx="5" ry="4"
+          fill="none" stroke="#aaaaaa" stroke-width="0.7" opacity="0.6"/>
 
       </svg>`;
 
