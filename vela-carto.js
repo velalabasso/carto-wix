@@ -330,18 +330,46 @@ window.VelaCarto = {
 
     /* ===================== UI — tout créé en JS ===================== */
 
-    // Slider wrapper
+    // Slider wrapper avec flèches
     const sliderWrapper = document.createElement("div");
     Object.assign(sliderWrapper.style, {
-      position: "fixed", bottom: "16px", left: "50px", right: "50px",
-      zIndex: "2"
+      position: "fixed", bottom: "16px", left: "20px", right: "20px",
+      zIndex: "2", display: "flex", alignItems: "center", gap: "10px"
     });
+
+    // Bouton flèche gauche (reculer)
+    const btnPrev = document.createElement("button");
+    btnPrev.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+    Object.assign(btnPrev.style, {
+      background: "rgba(95,125,149,0.55)", backdropFilter: "blur(6px)",
+      border: "1px solid rgba(255,255,255,0.18)", borderRadius: "50%",
+      width: "34px", height: "34px", cursor: "pointer", flexShrink: "0",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.3)", padding: "0",
+      transition: "background .15s"
+    });
+    btnPrev.onmouseenter = () => btnPrev.style.background = "rgba(95,125,149,0.85)";
+    btnPrev.onmouseleave = () => btnPrev.style.background = "rgba(95,125,149,0.55)";
+
+    // Bouton flèche droite (avancer)
+    const btnNext = document.createElement("button");
+    btnNext.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+    Object.assign(btnNext.style, {
+      background: "rgba(95,125,149,0.55)", backdropFilter: "blur(6px)",
+      border: "1px solid rgba(255,255,255,0.18)", borderRadius: "50%",
+      width: "34px", height: "34px", cursor: "pointer", flexShrink: "0",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.3)", padding: "0",
+      transition: "background .15s"
+    });
+    btnNext.onmouseenter = () => btnNext.style.background = "rgba(95,125,149,0.85)";
+    btnNext.onmouseleave = () => btnNext.style.background = "rgba(95,125,149,0.55)";
 
     const slider = document.createElement("input");
     slider.type  = "range"; slider.id = "time-slider";
     slider.min   = "0"; slider.step = "1"; slider.value = "0"; slider.max = "0";
     Object.assign(slider.style, {
-      width: "100%", appearance: "none", WebkitAppearance: "none",
+      flex: "1", appearance: "none", WebkitAppearance: "none",
       height: "6px", borderRadius: "99px",
       background: "rgba(95,125,149,0.55)", backdropFilter: "blur(4px)",
       outline: "none", cursor: "pointer",
@@ -349,7 +377,7 @@ window.VelaCarto = {
       boxShadow: "0 1px 6px rgba(0,0,0,0.3)", display: "block"
     });
 
-    // Inject thumb CSS via <style> tag (can't set pseudo-elements via JS)
+    // Inject thumb CSS
     const sliderStyle = document.createElement("style");
     sliderStyle.textContent = `
       #time-slider::-webkit-slider-thumb {
@@ -369,7 +397,9 @@ window.VelaCarto = {
     `;
     document.head.appendChild(sliderStyle);
 
+    sliderWrapper.appendChild(btnPrev);
     sliderWrapper.appendChild(slider);
+    sliderWrapper.appendChild(btnNext);
     document.getElementById("map").appendChild(sliderWrapper);
 
     // Éléments legacy attendus par le code (timeLabel, legend, variableName, pointerData)
@@ -396,17 +426,17 @@ window.VelaCarto = {
         position: "absolute", top: "12px", left: "12px",
         display: "flex", flexDirection: "column",
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
-        borderRadius: "12px", padding: "8px 14px 10px 14px",
+        borderRadius: "12px", padding: "6px 12px 8px 12px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
         border: "1px solid rgba(255,255,255,0.12)",
-        minWidth: "80px", zIndex: "800", pointerEvents: "none"
+        minWidth: "70px", zIndex: "800", pointerEvents: "none"
       });
       windWidget.innerHTML = `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;
           color:#c8dcea;font-family:Helvetica Neue,Arial,sans-serif;
           font-weight:500;margin-bottom:2px;">Vent</div>
-        <div id="vw-value" style="font-size:26px;font-weight:700;color:white;
-          font-family:Helvetica Neue,Arial,sans-serif;letter-spacing:-.02em;
+        <div id="vw-value" style="font-size:18px;font-weight:700;color:white;
+          font-family:Helvetica Neue,Arial,sans-serif;letter-spacing:-.01em;
           line-height:1;text-shadow:0 1px 6px rgba(0,0,0,0.4);">— kn</div>`;
       document.getElementById("map").appendChild(windWidget);
     }
@@ -772,5 +802,21 @@ window.VelaCarto = {
         updateBoatUI();
       });
     }
+
+    // Flèches de navigation
+    btnPrev.addEventListener("click", () => {
+      if (!hourlyPts.length) return;
+      sliderIdx = Math.max(0, sliderIdx - 1);
+      slider.value = sliderIdx;
+      renderAll();
+      updateBoatUI();
+    });
+    btnNext.addEventListener("click", () => {
+      if (!hourlyPts.length) return;
+      sliderIdx = Math.min(hourlyPts.length - 1, sliderIdx + 1);
+      slider.value = sliderIdx;
+      renderAll();
+      updateBoatUI();
+    });
   }
 };
