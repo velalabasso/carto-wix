@@ -19,10 +19,10 @@ window.VelaCarto = {
     /* ===================== ALLURE FR ===================== */
 
     const ALLURE_FR = {
-      "close-hauled" : "Au près",
-      "close reach"  : "Près abattu",
+      "close-hauled" : "Près",
+      "close reach"  : "Près bon plein",
       "beam reach"   : "Travers",
-      "broad reach"  : "Grand largue",
+      "broad reach"  : "Largue",
       "run"          : "Vent arrière",
       "-"            : "—"
     };
@@ -351,25 +351,36 @@ window.VelaCarto = {
     });
     map.on("mouseout", () => { if (pointerData) pointerData.innerText = ""; });
 
+    // Conteneur bas-gauche qui regroupe nav + science empilés
+    let bottomLeftContainer = null;
+    if (!isMini) {
+      bottomLeftContainer = document.createElement("div");
+      Object.assign(bottomLeftContainer.style, {
+        position: "absolute", bottom: "52px", left: "12px",
+        display: "flex", flexDirection: "column", gap: "8px",
+        zIndex: "800"
+      });
+      document.getElementById("map").appendChild(bottomLeftContainer);
+    }
+
     /* ===================== PANNEAU NAV (bas gauche) ===================== */
 
     let navPanel = null;
     if (!isMini) {
       navPanel = document.createElement("div");
       Object.assign(navPanel.style, {
-        position: "absolute", bottom: "52px", left: "12px",
-        background: "rgba(10,16,30,0.82)", backdropFilter: "blur(8px)",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
         color: "#dde6f0", fontFamily: "Helvetica Neue, Arial, sans-serif",
         fontSize: "13px", lineHeight: "1.8", padding: "10px 16px",
-        borderRadius: "10px", boxShadow: "0 2px 14px rgba(0,0,0,0.5)",
-        zIndex: "800", minWidth: "148px", pointerEvents: "none", display: "none"
+        borderRadius: "10px", boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        minWidth: "148px", pointerEvents: "none", display: "none"
       });
       navPanel.innerHTML = `
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7a9ec0;margin-bottom:5px;">Navigation</div>
-        <div><span style="color:#7a9ec0">SOG</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#7a9ec0;font-size:11px">kn</span></div>
-        <div><span style="color:#7a9ec0">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#7a9ec0;font-size:11px">kn</span></div>
-        <div><span style="color:#7a9ec0">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>`;
-      document.getElementById("map").appendChild(navPanel);
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:5px;">Navigation</div>
+        <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
+        <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
+        <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>`;
+      bottomLeftContainer.appendChild(navPanel);
     }
 
     function updateNavPanel(p) {
@@ -395,15 +406,14 @@ window.VelaCarto = {
     if (!isMini) {
       sciPanel = document.createElement("div");
       Object.assign(sciPanel.style, {
-        position: "absolute", top: "12px", right: "12px",
-        background: "rgba(10,16,30,0.82)", backdropFilter: "blur(8px)",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
         color: "#dde6f0", fontFamily: "Helvetica Neue, Arial, sans-serif",
         fontSize: "12px", lineHeight: "1.9", padding: "10px 16px",
-        borderRadius: "10px", boxShadow: "0 2px 14px rgba(0,0,0,0.5)",
-        zIndex: "800", minWidth: "218px"
+        borderRadius: "10px", boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        minWidth: "218px"
       });
 
-      let html = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7a9ec0;margin-bottom:8px;">Science</div>`;
+      let html = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:8px;">Science</div>`;
       sciRows.forEach((row, ri) => {
         const swatch = row.type === "dot"
           ? `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${row.color};
@@ -418,7 +428,7 @@ window.VelaCarto = {
           </label>`;
       });
       sciPanel.innerHTML = html;
-      document.getElementById("map").appendChild(sciPanel);
+      bottomLeftContainer.appendChild(sciPanel);
 
       sciPanel.querySelectorAll("input[type=checkbox]").forEach(cb => {
         cb.addEventListener("change", () => {
