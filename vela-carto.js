@@ -623,27 +623,16 @@ window.VelaCarto = {
       const p = hourlyPts[sliderIdx];
       if (boatMarker) boatMarker.setLngLat([p.lon, p.lat]);
 
-      // Rotation du voilier — on cible le div intérieur, pas le wrapper maptiler
+      // Rotation du voilier — directement sur boatEl qui porte la transition CSS
       if (boatMarker && sliderIdx > 0 && window._velaComputeBearing) {
         const prev = hourlyPts[sliderIdx - 1];
         const bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
-        const innerEl = boatMarker.getElement().querySelector("div");
-        if (innerEl) innerEl.style.transform = `rotate(${bearing}deg)`;
+        const boatEl = boatMarker.getElement().firstElementChild;
+        if (boatEl) boatEl.style.transform = `rotate(${bearing}deg)`;
       }
 
-      // Miles parcourus depuis le début jusqu'au slot courant (sur allPoints)
-      let milesDone = 0;
-      if (allPoints.length > 1) {
-        const cutMs = p.timestampMs;
-        const slice = allPoints.filter(pt => pt.timestampMs <= cutMs);
-        for (let i = 1; i < slice.length; i++) {
-          const d = haversine_nm_js(
-            slice[i-1].lat, slice[i-1].lon,
-            slice[i].lat,   slice[i].lon
-          );
-          if (d < 1) milesDone += d;
-        }
-      }
+      // Miles parcourus précis — distance cumulée sur tous les points jusqu'au slot
+      const milesDone = milesAtTimestamp(p.timestampMs);
 
       updateNavPanel(p, milesDone);
 
@@ -673,9 +662,32 @@ window.VelaCarto = {
 
     /* ===================== REFRESH ===================== */
 
+    let cumDist = []; // distances cumulées sur allPoints, précalculées
+
+    function buildCumDist(pts) {
+      const d = new Array(pts.length).fill(0);
+      for (let i = 1; i < pts.length; i++) {
+        const seg = haversine_nm_js(pts[i-1].lat, pts[i-1].lon, pts[i].lat, pts[i].lon);
+        d[i] = d[i-1] + (seg < 1 ? seg : 0); // filtre les sauts > 1 nm
+      }
+      return d;
+    }
+
+    function milesAtTimestamp(cutMs) {
+      if (!allPoints.length || !cumDist.length) return 0;
+      // Recherche binaire dans allPoints
+      let lo = 0; let hi = allPoints.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (allPoints[mid].timestampMs <= cutMs) lo = mid; else hi = mid - 1;
+      }
+      return cumDist[lo];
+    }
+
     async function refreshLiveTrack() {
       const { livePoints } = await loadAllTrackPoints();
       allPoints = livePoints;
+      cumDist   = buildCumDist(allPoints);   // précalcul une seule fois
       hourlyPts = buildHourly(allPoints);
       sliderIdx = Math.max(hourlyPts.length - 1, 0);
 
@@ -735,62 +747,78 @@ window.VelaCarto = {
       addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
 
       /* ---- Marqueur bateau SVG voilier rotatif ---- */
-      const boatSize = isMini ? 36 : 48;
+      const boatSize = isMini ? 36 : 52;
 
-      // SVG voilier type Vendée Globe — blanc/bleu #5F7D95
-      // Dessiné centré sur 0,0, pointant vers le haut (nord = 0°)
+      // SVG voilier type Vendée Globe — pointe vers le HAUT (nord = 0°)
+      // Coque inversée : proue en haut, poupe en bas
+      // Génois arrondi côté tribord, grande voile côté bâbord
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
         width="${boatSize}" height="${boatSize}"
-        viewBox="-24 -24 48 48">
+        viewBox="-24 -28 48 56">
 
-        <!-- Ombre portée -->
-        <filter id="bs"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.5)"/></filter>
+        <defs>
+          <filter id="bs" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="rgba(0,0,0,0.55)"/>
+          </filter>
+        </defs>
 
-        <!-- Coque — fuseau pointu avant/arrière -->
-        <ellipse cx="0" cy="6" rx="5" ry="14"
-          fill="#5F7D95" stroke="white" stroke-width="1.2" filter="url(#bs)"/>
+        <!-- Coque — ellipse fine, proue en haut -->
+        <ellipse cx="0" cy="4" rx="4.5" ry="15"
+          fill="#5F7D95" stroke="white" stroke-width="1.2"
+          filter="url(#bs)"/>
 
-        <!-- Quille — petite extension sous la coque -->
-        <rect x="-1.5" y="18" width="3" height="4" rx="1"
+        <!-- Quille — sous la coque (poupe = bas) -->
+        <rect x="-1.5" y="17" width="3" height="5" rx="1.2"
           fill="#5F7D95" stroke="white" stroke-width="0.8"/>
 
-        <!-- Grand mât — centré, vertical -->
-        <line x1="0" y1="-20" x2="0" y2="14"
-          stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Mât — du bas de la voile à la tête de mât -->
+        <line x1="0" y1="-22" x2="0" y2="13"
+          stroke="white" stroke-width="1.5" stroke-linecap="round"/>
 
-        <!-- Grande voile — triangle du mât à la poupe -->
-        <polygon points="0,-18 0,12 -10,8"
-          fill="white" fill-opacity="0.92" stroke="#5F7D95" stroke-width="0.8"/>
+        <!-- Bôme — horizontal depuis le mât vers l'arrière bâbord -->
+        <line x1="0" y1="10" x2="-11" y2="13"
+          stroke="white" stroke-width="1" stroke-linecap="round"/>
 
-        <!-- Foc — triangle avant -->
-        <polygon points="0,-18 0,-2 9,-4"
-          fill="white" fill-opacity="0.75" stroke="#5F7D95" stroke-width="0.7"/>
+        <!-- Grande voile — triangle mât/tête/bôme, côté bâbord -->
+        <polygon points="0,-21 0,10 -12,13"
+          fill="white" fill-opacity="0.90"
+          stroke="#5F7D95" stroke-width="0.8" stroke-linejoin="round"/>
 
-        <!-- Point de navigation (cercle au centre coque) -->
-        <circle cx="0" cy="6" r="2.5"
-          fill="white" stroke="#5F7D95" stroke-width="1"/>
+        <!-- Génois — voile d'avant arrondie, côté tribord -->
+        <path d="M 0,-20 C 14,-12 16,2 12,8 L 0,-2 Z"
+          fill="white" fill-opacity="0.78"
+          stroke="#5F7D95" stroke-width="0.7"/>
+
+        <!-- Étrave (point de proue) — petit triangle accentué -->
+        <polygon points="0,-26 -2.5,-18 2.5,-18"
+          fill="white" opacity="0.6"/>
+
       </svg>`;
 
       const boatEl = document.createElement("div");
-      boatEl.style.cssText = `width:${boatSize}px;height:${boatSize}px;pointer-events:none;
-        transition:transform .4s cubic-bezier(.25,.8,.25,1);`;
+      Object.assign(boatEl.style, {
+        width: boatSize + "px",
+        height: boatSize + "px",
+        pointerEvents: "none",
+        transformOrigin: "center center",
+        transition: "transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
+      });
       boatEl.innerHTML = boatSVG;
 
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
         .setLngLat(fallbackCenter).addTo(map);
 
-      // Fonction de calcul du cap entre deux points (bearing)
+      // Fonction de calcul du cap entre deux points (bearing géodésique)
       function computeBearing(lat1, lon1, lat2, lon2) {
         const toRad = d => d * Math.PI / 180;
         const toDeg = r => r * 180 / Math.PI;
-        const dLon = toRad(lon2 - lon1);
+        const dLon  = toRad(lon2 - lon1);
         const y = Math.sin(dLon) * Math.cos(toRad(lat2));
         const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
                 - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
         return (toDeg(Math.atan2(y, x)) + 360) % 360;
       }
 
-      // Expose la fonction pour updateBoatUI
       window._velaComputeBearing = computeBearing;
 
       /* ---- Blog marker ---- */
