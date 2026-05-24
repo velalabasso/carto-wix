@@ -34,7 +34,7 @@ window.VelaCarto = {
 
     // Ponctuelles : marqueur rond à chaque début de station
     const SCIENCE_PT = {
-      hypernet     : { label: "Station Hypernet",   color: "#f59e0b" },
+      hypernet     : { label: "Mesure Hypernet",    color: "#f97316" },
       net          : { label: "Station Biologie",   color: "#10b981" },
       ctd_profile  : { label: "Station CTD",        color: "#a855f7" },
       ctd_intercomp: { label: "Station CTD",        color: "#a855f7" }
@@ -267,9 +267,7 @@ window.VelaCarto = {
       return { type: "FeatureCollection", features };
     }
 
-    /* ===================== HYPERNET : points tous les 0.5 nm ===================== */
-    // Génère des points espacés de 0.5 miles nautiques entre chaque ON et OFF
-    // Déduplication par proximité pour éviter la superposition de points
+    /* ===================== HYPERNET : ligne orange entre ON et OFF ===================== */
 
     function haversine_nm_js(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -279,65 +277,27 @@ window.VelaCarto = {
       return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
     }
 
+    // Génère des segments de ligne (LineString) pour chaque plage ON→OFF
     function buildHypernetGeoJSON(slice) {
-      const STEP_NM     = 0.5;   // espacement entre points
-      const MIN_DIST_NM = 0.25;  // distance minimale pour éviter superposition (demi-pas)
-
       const features = [];
-      let wasOn = false;
       let segment = [];
-
-      function flushSegment(seg) {
-        if (!seg.length) return;
-        // Parcours le segment et place des points tous les 0.5 nm
-        let distSinceLast = 0;
-        let lastPlaced = null;
-
-        // Premier point du segment
-        const first = seg[0];
-        features.push({ type: "Feature", properties: { key: "hypernet" },
-          geometry: { type: "Point", coordinates: [first.lon, first.lat] } });
-        lastPlaced = first;
-
-        for (let i = 1; i < seg.length; i++) {
-          const d = haversine_nm_js(seg[i-1].lat, seg[i-1].lon, seg[i].lat, seg[i].lon);
-          distSinceLast += d;
-
-          if (distSinceLast >= STEP_NM) {
-            // Interpoler la position exacte à 0.5 nm
-            const excess = distSinceLast - STEP_NM;
-            const frac = d > 0 ? (d - excess) / d : 0;
-            const iLon = seg[i-1].lon + frac * (seg[i].lon - seg[i-1].lon);
-            const iLat = seg[i-1].lat + frac * (seg[i].lat - seg[i-1].lat);
-
-            // Vérifier que le point n'est pas trop proche du dernier placé
-            if (lastPlaced) {
-              const dToLast = haversine_nm_js(lastPlaced.lat, lastPlaced.lon, iLat, iLon);
-              if (dToLast >= MIN_DIST_NM) {
-                features.push({ type: "Feature", properties: { key: "hypernet" },
-                  geometry: { type: "Point", coordinates: [iLon, iLat] } });
-                lastPlaced = { lon: iLon, lat: iLat };
-              }
-            }
-            distSinceLast = excess;
-          }
-        }
-      }
 
       slice.forEach(p => {
         const on = p.hypernet === "ON";
         if (on) {
-          segment.push(p);
+          segment.push([p.lon, p.lat]);
         } else {
-          if (segment.length) {
-            flushSegment(segment);
-            segment = [];
+          if (segment.length >= 2) {
+            features.push({ type: "Feature", properties: {},
+              geometry: { type: "LineString", coordinates: segment } });
           }
+          segment = [];
         }
-        wasOn = on;
       });
-      if (segment.length) flushSegment(segment);
-
+      if (segment.length >= 2) {
+        features.push({ type: "Feature", properties: {},
+          geometry: { type: "LineString", coordinates: segment } });
+      }
       return { type: "FeatureCollection", features };
     }
 
@@ -621,7 +581,7 @@ window.VelaCarto = {
     /* ===================== PANNEAU SCIENCE ===================== */
 
     const sciRows = [
-      { keys: ["hypernet"],                   label: "Station Hypernet",   color: SCIENCE_PT.hypernet.color,    type: "dot"  },
+      { keys: ["hypernet"],                   label: "Mesure Hypernet",    color: SCIENCE_PT.hypernet.color,    type: "line" },
       { keys: ["net"],                         label: "Station Biologie",   color: SCIENCE_PT.net.color,         type: "dot"  },
       { keys: ["ctd_profile","ctd_intercomp"], label: "Station CTD",        color: SCIENCE_PT.ctd_profile.color, type: "dot"  },
       { keys: ["inline"],                      label: "Inline (continu)",   color: SCIENCE_CT.inline.color,      type: "line" },
@@ -845,15 +805,15 @@ window.VelaCarto = {
       });
 
       /* ---- Layers science ponctuelles ---- */
-      // Hypernet : 2× plus petit (radius 4 au lieu de 8), bordure couleur claire
+      // Hypernet : ligne orange continue entre ON et OFF
       map.addSource("sci-pt-hypernet", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
-        id: "sci-pt-hypernet-circle", type: "circle", source: "sci-pt-hypernet",
+        id: "sci-pt-hypernet-circle", type: "line", source: "sci-pt-hypernet",
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "circle-radius": isMini ? 2.5 : 4,                       // ← 2× plus petit
-          "circle-color": SCIENCE_PT.hypernet.color,                 // centre = couleur actuelle
-          "circle-stroke-width": 1.5,
-          "circle-stroke-color": STROKE_COLORS.hypernet             // bordure = couleur claire
+          "line-color": SCIENCE_PT.hypernet.color,
+          "line-width": isMini ? 3 : 5,
+          "line-opacity": 0.95
         }
       });
 
