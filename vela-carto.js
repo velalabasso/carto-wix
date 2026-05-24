@@ -51,6 +51,25 @@ window.VelaCarto = {
     const sciVis = {};
     ALL_SCIENCE.forEach(k => sciVis[k] = true);
 
+    /* ===================== COULEURS BORDURES (version claire) ===================== */
+    // Pour chaque couleur de station, génère une version plus claire pour la bordure
+    function lightenColor(hex, amount = 0.45) {
+      const r = parseInt(hex.slice(1,3), 16);
+      const g = parseInt(hex.slice(3,5), 16);
+      const b = parseInt(hex.slice(5,7), 16);
+      const lr = Math.round(r + (255 - r) * amount);
+      const lg = Math.round(g + (255 - g) * amount);
+      const lb = Math.round(b + (255 - b) * amount);
+      return `#${lr.toString(16).padStart(2,'0')}${lg.toString(16).padStart(2,'0')}${lb.toString(16).padStart(2,'0')}`;
+    }
+
+    // Couleurs bordures claires pour chaque type de station
+    const STROKE_COLORS = {
+      hypernet    : lightenColor(SCIENCE_PT.hypernet.color),      // #f59e0b → clair
+      net         : lightenColor(SCIENCE_PT.net.color),            // #10b981 → clair
+      ctd_profile : lightenColor(SCIENCE_PT.ctd_profile.color),   // #a855f7 → clair
+    };
+
     /* ===================== URL HELPERS ===================== */
 
     function cacheBuster() { return `v=${Date.now()}`; }
@@ -198,7 +217,6 @@ window.VelaCarto = {
           nextMs = Math.floor(p.timestampMs / H) * H + H;
         }
       });
-      // Toujours inclure le dernier point
       const last = points[points.length - 1];
       if (!result.length || result[result.length - 1].timestampMs < last.timestampMs) {
         result.push(last);
@@ -218,7 +236,6 @@ window.VelaCarto = {
       };
     }
 
-    // Segments colorés pour les stations continues (inline, ctd_keel)
     function buildContGeoJSON(slice, key) {
       const features = []; let seg = null;
       slice.forEach(p => {
@@ -234,7 +251,7 @@ window.VelaCarto = {
       return { type: "FeatureCollection", features };
     }
 
-    // Marqueurs ponctuels : 1 point à chaque transition OFF→ON pour une liste de clés
+    // Marqueurs ponctuels standard : 1 point à chaque transition OFF→ON
     function buildPtGeoJSON(slice, keys) {
       const features = []; const wasOn = {};
       keys.forEach(k => wasOn[k] = false);
@@ -247,6 +264,80 @@ window.VelaCarto = {
           wasOn[k] = on;
         });
       });
+      return { type: "FeatureCollection", features };
+    }
+
+    /* ===================== HYPERNET : points tous les 0.5 nm ===================== */
+    // Génère des points espacés de 0.5 miles nautiques entre chaque ON et OFF
+    // Déduplication par proximité pour éviter la superposition de points
+
+    function haversine_nm_js(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toR = d => d * Math.PI / 180;
+      const dphi = toR(lat2 - lat1); const dlam = toR(lon2 - lon1);
+      const a = Math.sin(dphi/2)**2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dlam/2)**2;
+      return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
+    }
+
+    function buildHypernetGeoJSON(slice) {
+      const STEP_NM     = 0.5;   // espacement entre points
+      const MIN_DIST_NM = 0.25;  // distance minimale pour éviter superposition (demi-pas)
+
+      const features = [];
+      let wasOn = false;
+      let segment = [];
+
+      function flushSegment(seg) {
+        if (!seg.length) return;
+        // Parcours le segment et place des points tous les 0.5 nm
+        let distSinceLast = 0;
+        let lastPlaced = null;
+
+        // Premier point du segment
+        const first = seg[0];
+        features.push({ type: "Feature", properties: { key: "hypernet" },
+          geometry: { type: "Point", coordinates: [first.lon, first.lat] } });
+        lastPlaced = first;
+
+        for (let i = 1; i < seg.length; i++) {
+          const d = haversine_nm_js(seg[i-1].lat, seg[i-1].lon, seg[i].lat, seg[i].lon);
+          distSinceLast += d;
+
+          if (distSinceLast >= STEP_NM) {
+            // Interpoler la position exacte à 0.5 nm
+            const excess = distSinceLast - STEP_NM;
+            const frac = d > 0 ? (d - excess) / d : 0;
+            const iLon = seg[i-1].lon + frac * (seg[i].lon - seg[i-1].lon);
+            const iLat = seg[i-1].lat + frac * (seg[i].lat - seg[i-1].lat);
+
+            // Vérifier que le point n'est pas trop proche du dernier placé
+            if (lastPlaced) {
+              const dToLast = haversine_nm_js(lastPlaced.lat, lastPlaced.lon, iLat, iLon);
+              if (dToLast >= MIN_DIST_NM) {
+                features.push({ type: "Feature", properties: { key: "hypernet" },
+                  geometry: { type: "Point", coordinates: [iLon, iLat] } });
+                lastPlaced = { lon: iLon, lat: iLat };
+              }
+            }
+            distSinceLast = excess;
+          }
+        }
+      }
+
+      slice.forEach(p => {
+        const on = p.hypernet === "ON";
+        if (on) {
+          segment.push(p);
+        } else {
+          if (segment.length) {
+            flushSegment(segment);
+            segment = [];
+          }
+        }
+        wasOn = on;
+      });
+      if (segment.length) flushSegment(segment);
+
       return { type: "FeatureCollection", features };
     }
 
@@ -328,16 +419,14 @@ window.VelaCarto = {
       ]})
     });
 
-    /* ===================== UI — tout créé en JS ===================== */
+    /* ===================== UI ===================== */
 
-    // Slider wrapper avec flèches
     const sliderWrapper = document.createElement("div");
     Object.assign(sliderWrapper.style, {
       position: "fixed", bottom: "16px", left: "20px", right: "20px",
       zIndex: "2", display: "flex", alignItems: "center", gap: "10px"
     });
 
-    // Bouton flèche gauche (reculer)
     const btnPrev = document.createElement("button");
     btnPrev.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
     Object.assign(btnPrev.style, {
@@ -351,7 +440,6 @@ window.VelaCarto = {
     btnPrev.onmouseenter = () => btnPrev.style.background = "rgba(95,125,149,0.85)";
     btnPrev.onmouseleave = () => btnPrev.style.background = "rgba(95,125,149,0.55)";
 
-    // Bouton flèche droite (avancer)
     const btnNext = document.createElement("button");
     btnNext.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
     Object.assign(btnNext.style, {
@@ -377,7 +465,6 @@ window.VelaCarto = {
       boxShadow: "0 1px 6px rgba(0,0,0,0.3)", display: "block"
     });
 
-    // Inject thumb CSS
     const sliderStyle = document.createElement("style");
     sliderStyle.textContent = `
       #time-slider::-webkit-slider-thumb {
@@ -402,8 +489,6 @@ window.VelaCarto = {
     sliderWrapper.appendChild(btnNext);
     document.getElementById("map").appendChild(sliderWrapper);
 
-    // Éléments legacy attendus par le code (timeLabel, legend, variableName, pointerData)
-    // On les crée masqués pour éviter les erreurs
     const timeLabel    = document.createElement("div"); timeLabel.style.display    = "none"; document.body.appendChild(timeLabel);
     const legend       = document.createElement("div"); legend.style.display       = "none"; document.body.appendChild(legend);
     const variableName = document.createElement("div"); variableName.style.display = "none"; document.body.appendChild(variableName);
@@ -418,7 +503,6 @@ window.VelaCarto = {
     });
     map.on("mouseout", () => { if (pointerData) pointerData.innerText = "— kn"; });
 
-    // Widget vent — créé entièrement en JS, indépendant du HTML
     let windWidget = null;
     if (!isMini) {
       windWidget = document.createElement("div");
@@ -452,7 +536,6 @@ window.VelaCarto = {
       if (vwEl) vwEl.innerText = "— kn";
     });
 
-    // Conteneur bas-gauche qui regroupe nav + science empilés
     let bottomLeftContainer = null;
     if (!isMini) {
       bottomLeftContainer = document.createElement("div");
@@ -464,7 +547,9 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(bottomLeftContainer);
     }
 
-    /* ===================== PANNEAU NAV (bas gauche) ===================== */
+    /* ===================== PANNEAU NAV ===================== */
+    // Stocke le timestamp du premier point pour calculer le temps depuis le départ
+    let departureMs = null;
 
     let navPanel = null;
     if (!isMini) {
@@ -482,9 +567,24 @@ window.VelaCarto = {
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>
+        <div><span style="color:#c8dcea">Temps départ</span>&nbsp;<strong id="vn-elapsed">—</strong></div>
         <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>`;
       bottomLeftContainer.appendChild(navPanel);
     }
+
+    // Formate une durée en ms → "Xj HHh MMm"
+    function formatElapsed(ms) {
+      if (!ms || ms < 0) return "—";
+      const totalMin = Math.floor(ms / 60000);
+      const days  = Math.floor(totalMin / 1440);
+      const hours = Math.floor((totalMin % 1440) / 60);
+      const mins  = totalMin % 60;
+      if (days > 0) return `${days}j ${String(hours).padStart(2,"0")}h${String(mins).padStart(2,"0")}m`;
+      return `${String(hours).padStart(2,"0")}h${String(mins).padStart(2,"0")}m`;
+    }
+
+    // Correction distance : +150 nm (miles non comptabilisés au départ)
+    const DISTANCE_OFFSET_NM = 150;
 
     function updateNavPanel(p, miles) {
       if (!navPanel || !p) return;
@@ -493,18 +593,33 @@ window.VelaCarto = {
         day: "2-digit", month: "2-digit", year: "numeric",
         hour: "2-digit", minute: "2-digit", timeZone: "UTC"
       }) + " UTC";
-      document.getElementById("vn-date").textContent   = dateStr;
-      document.getElementById("vn-sog").textContent    = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
-      document.getElementById("vn-tws").textContent    = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
-      document.getElementById("vn-allure").textContent = p.allure ? allureFr(p.allure) : "—";
+      document.getElementById("vn-date").textContent    = dateStr;
+      document.getElementById("vn-sog").textContent     = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
+      document.getElementById("vn-tws").textContent     = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
+      document.getElementById("vn-allure").textContent  = p.allure ? allureFr(p.allure) : "—";
+
+      // Temps depuis le départ
+      const elapsedEl = document.getElementById("vn-elapsed");
+      if (elapsedEl) {
+        const elapsed = departureMs ? p.timestampMs - departureMs : 0;
+        elapsedEl.textContent = formatElapsed(elapsed);
+      }
+
+      // Distance + offset 150 nm
       const milesEl = document.getElementById("vn-miles");
-      if (milesEl) milesEl.textContent = (miles !== undefined && miles > 0) ? miles.toFixed(1) : "—";
+      if (milesEl) {
+        if (miles !== undefined && miles > 0) {
+          milesEl.textContent = (miles + DISTANCE_OFFSET_NM).toFixed(1);
+        } else {
+          milesEl.textContent = "—";
+        }
+      }
+
       navPanel.style.display = "block";
     }
 
-    /* ===================== PANNEAU SCIENCE (haut droite) ===================== */
+    /* ===================== PANNEAU SCIENCE ===================== */
 
-    // Rangées de la légende — ctd_profile et ctd_intercomp partagent une seule ligne
     const sciRows = [
       { keys: ["hypernet"],                   label: "Station Hypernet",   color: SCIENCE_PT.hypernet.color,    type: "dot"  },
       { keys: ["net"],                         label: "Station Biologie",   color: SCIENCE_PT.net.color,         type: "dot"  },
@@ -526,9 +641,17 @@ window.VelaCarto = {
 
       let html = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:8px;">Science</div>`;
       sciRows.forEach((row, ri) => {
-        const swatch = row.type === "dot"
-          ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${row.color};margin-right:7px;flex-shrink:0;vertical-align:middle;border:1.5px solid rgba(255,255,255,0.35)"></span>`
-          : `<span style="display:inline-block;width:16px;height:3px;background:${row.color};border-radius:2px;margin-right:7px;flex-shrink:0;vertical-align:middle;"></span>`;
+        // Pour les dots : cercle avec bordure claire, cohérent avec la carte
+        let swatch;
+        if (row.type === "dot") {
+          const strokeColor = lightenColor(row.color, 0.45);
+          swatch = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;
+            background:${row.color};margin-right:7px;flex-shrink:0;vertical-align:middle;
+            border:1.5px solid ${strokeColor}"></span>`;
+        } else {
+          swatch = `<span style="display:inline-block;width:16px;height:3px;background:${row.color};
+            border-radius:2px;margin-right:7px;flex-shrink:0;vertical-align:middle;"></span>`;
+        }
         html += `
           <div style="display:flex;align-items:center;margin-bottom:6px;cursor:pointer;user-select:none;" data-ri="${ri}">
             <div class="vela-pill" data-active="true" style="
@@ -551,7 +674,6 @@ window.VelaCarto = {
       sciPanel.innerHTML = html;
       bottomLeftContainer.appendChild(sciPanel);
 
-      // Listeners sur les toggles
       sciPanel.querySelectorAll("[data-ri]").forEach(row => {
         const pill = row.querySelector(".vela-pill");
         const knob = row.querySelector(".vela-knob");
@@ -581,7 +703,6 @@ window.VelaCarto = {
     function getSlice() {
       if (!hourlyPts.length) return allPoints;
       const cutMs = hourlyPts[sliderIdx].timestampMs;
-      // Filtre en O(log n) grâce au tableau trié
       let lo = 0; let hi = allPoints.length;
       while (lo < hi) { const mid = (lo + hi) >> 1; if (allPoints[mid].timestampMs <= cutMs) lo = mid + 1; else hi = mid; }
       return allPoints.slice(0, lo);
@@ -603,15 +724,15 @@ window.VelaCarto = {
         if (src) src.setData(sciVis[k] ? buildContGeoJSON(slice, k) : EMPTY_FC);
       });
 
-      // Ponctuelles — hypernet
+      // Hypernet — points tous les 0.5 nm entre ON et OFF
       const srcH = map.getSource("sci-pt-hypernet");
-      if (srcH) srcH.setData(sciVis.hypernet ? buildPtGeoJSON(slice, ["hypernet"]) : EMPTY_FC);
+      if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
-      // Ponctuelles — net
+      // Biologie
       const srcN = map.getSource("sci-pt-net");
       if (srcN) srcN.setData(sciVis.net ? buildPtGeoJSON(slice, ["net"]) : EMPTY_FC);
 
-      // Ponctuelles — CTD (profile + intercomp fusionnés sous une checkbox)
+      // CTD
       const srcC = map.getSource("sci-pt-ctd");
       if (srcC) srcC.setData(sciVis.ctd_profile ? buildPtGeoJSON(slice, ["ctd_profile","ctd_intercomp"]) : EMPTY_FC);
     }
@@ -623,7 +744,6 @@ window.VelaCarto = {
       const p = hourlyPts[sliderIdx];
       if (boatMarker) boatMarker.setLngLat([p.lon, p.lat]);
 
-      // Rotation du voilier — directement sur boatEl qui porte la transition CSS
       if (boatMarker && sliderIdx > 0 && window._velaComputeBearing) {
         const prev = hourlyPts[sliderIdx - 1];
         const bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
@@ -631,9 +751,7 @@ window.VelaCarto = {
         if (boatEl) boatEl.style.transform = `rotate(${bearing}deg)`;
       }
 
-      // Miles parcourus précis — distance cumulée sur tous les points jusqu'au slot
       const milesDone = milesAtTimestamp(p.timestampMs);
-
       updateNavPanel(p, milesDone);
 
       if (timeLabel) {
@@ -651,31 +769,21 @@ window.VelaCarto = {
       }
     }
 
-    // Haversine en JS pour updateBoatUI (indépendant du scope Python)
-    function haversine_nm_js(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toR = d => d * Math.PI / 180;
-      const dphi = toR(lat2 - lat1); const dlam = toR(lon2 - lon1);
-      const a = Math.sin(dphi/2)**2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dlam/2)**2;
-      return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
-    }
+    /* ===================== DISTANCES ===================== */
 
-    /* ===================== REFRESH ===================== */
-
-    let cumDist = []; // distances cumulées sur allPoints, précalculées
+    let cumDist = [];
 
     function buildCumDist(pts) {
       const d = new Array(pts.length).fill(0);
       for (let i = 1; i < pts.length; i++) {
         const seg = haversine_nm_js(pts[i-1].lat, pts[i-1].lon, pts[i].lat, pts[i].lon);
-        d[i] = d[i-1] + (seg < 1 ? seg : 0); // filtre les sauts > 1 nm
+        d[i] = d[i-1] + (seg < 1 ? seg : 0);
       }
       return d;
     }
 
     function milesAtTimestamp(cutMs) {
       if (!allPoints.length || !cumDist.length) return 0;
-      // Recherche binaire dans allPoints
       let lo = 0; let hi = allPoints.length - 1;
       while (lo < hi) {
         const mid = (lo + hi + 1) >> 1;
@@ -684,10 +792,18 @@ window.VelaCarto = {
       return cumDist[lo];
     }
 
+    /* ===================== REFRESH ===================== */
+
     async function refreshLiveTrack() {
       const { livePoints } = await loadAllTrackPoints();
       allPoints = livePoints;
-      cumDist   = buildCumDist(allPoints);   // précalcul une seule fois
+      cumDist   = buildCumDist(allPoints);
+
+      // Mémoriser le timestamp du premier point pour le temps depuis le départ
+      if (allPoints.length && !departureMs) {
+        departureMs = allPoints[0].timestampMs;
+      }
+
       hourlyPts = buildHourly(allPoints);
       sliderIdx = Math.max(hourlyPts.length - 1, 0);
 
@@ -701,7 +817,6 @@ window.VelaCarto = {
 
     map.on("load", async () => {
 
-      // Vent
       try {
         if (map.getLayer("Water")) {
           map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
@@ -730,24 +845,43 @@ window.VelaCarto = {
       });
 
       /* ---- Layers science ponctuelles ---- */
-      function addPtLayer(srcId, layerId, color) {
-        map.addSource(srcId, { type: "geojson", data: EMPTY_FC });
-        map.addLayer({
-          id: layerId, type: "circle", source: srcId,
-          paint: {
-            "circle-radius": isMini ? 5 : 8,
-            "circle-color": color,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff"
-          }
-        });
-      }
-      addPtLayer("sci-pt-hypernet", "sci-pt-hypernet-circle", SCIENCE_PT.hypernet.color);
-      addPtLayer("sci-pt-net",      "sci-pt-net-circle",      SCIENCE_PT.net.color);
-      addPtLayer("sci-pt-ctd",      "sci-pt-ctd-circle",      SCIENCE_PT.ctd_profile.color);
+      // Hypernet : 2× plus petit (radius 4 au lieu de 8), bordure couleur claire
+      map.addSource("sci-pt-hypernet", { type: "geojson", data: EMPTY_FC });
+      map.addLayer({
+        id: "sci-pt-hypernet-circle", type: "circle", source: "sci-pt-hypernet",
+        paint: {
+          "circle-radius": isMini ? 2.5 : 4,                       // ← 2× plus petit
+          "circle-color": SCIENCE_PT.hypernet.color,                 // centre = couleur actuelle
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": STROKE_COLORS.hypernet             // bordure = couleur claire
+        }
+      });
 
-      /* ---- Marqueur bateau SVG — tracé fidèle de la photo drone ---- */
-      /* ---- Marqueur bateau SVG — voilier plaisance simple, blanc ---- */
+      // Biologie : même logique couleur centre/bordure
+      map.addSource("sci-pt-net", { type: "geojson", data: EMPTY_FC });
+      map.addLayer({
+        id: "sci-pt-net-circle", type: "circle", source: "sci-pt-net",
+        paint: {
+          "circle-radius": isMini ? 5 : 8,
+          "circle-color": SCIENCE_PT.net.color,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": STROKE_COLORS.net
+        }
+      });
+
+      // CTD : même logique couleur centre/bordure
+      map.addSource("sci-pt-ctd", { type: "geojson", data: EMPTY_FC });
+      map.addLayer({
+        id: "sci-pt-ctd-circle", type: "circle", source: "sci-pt-ctd",
+        paint: {
+          "circle-radius": isMini ? 5 : 8,
+          "circle-color": SCIENCE_PT.ctd_profile.color,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": STROKE_COLORS.ctd_profile
+        }
+      });
+
+      /* ---- Marqueur bateau SVG ---- */
       const boatSize = isMini ? 40 : 60;
 
       const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
@@ -760,7 +894,6 @@ window.VelaCarto = {
           </filter>
         </defs>
 
-        <!-- Coque blanche — proue pointue en haut, poupe arrondie en bas -->
         <path d="M 0,-26
                  C 0.5,-20  3,-10  4,0
                  C 5,8     5,14   4,18
@@ -771,19 +904,15 @@ window.VelaCarto = {
           fill="white" stroke="#5F7D95" stroke-width="1.4"
           filter="url(#bsf)"/>
 
-        <!-- Ligne de pont -->
         <line x1="0" y1="-24" x2="0" y2="20"
           stroke="#5F7D95" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.3"/>
 
-        <!-- Mât -->
         <circle cx="0" cy="-8" r="1.4" fill="#aabcca" stroke="white" stroke-width="0.5"/>
 
-        <!-- Grande voile — arc bâbord -->
         <path d="M 0,-8 Q -7,2 -6,18"
           fill="none" stroke="#5F7D95" stroke-width="1.6"
           stroke-linecap="round" opacity="0.85"/>
 
-        <!-- Génois — arc avant bâbord -->
         <path d="M 0,-24 Q -7,-16 0,-8"
           fill="none" stroke="#5F7D95" stroke-width="1.3"
           stroke-linecap="round" opacity="0.75"/>
@@ -814,7 +943,7 @@ window.VelaCarto = {
       }
       window._velaComputeBearing = computeBearing;
 
-      /* ---- Blog marker custom SVG ---- */
+      /* ---- Blog marker ---- */
       const blogCoords = [9.10300, 43.75930];
       const blogProps  = {
         title  : "Déploiement & récupération flotteurs Argo BGC",
@@ -824,7 +953,6 @@ window.VelaCarto = {
         excerpt: "Quelques jours de navigation dans le Golfe de Gênes! Au programme, un déploiement de flotteur Argo en collaboration avec le laboratoire de Villefranche-sur-Mer."
       };
 
-      // Marqueur blog — épingle en V, petite, bleu #5F7D95
       const blogDotEl = document.createElement("div");
       const bSize = isMini ? 14 : 20;
       blogDotEl.innerHTML = `
@@ -925,7 +1053,6 @@ window.VelaCarto = {
       });
     }
 
-    // Flèches de navigation
     btnPrev.addEventListener("click", () => {
       if (!hourlyPts.length) return;
       sliderIdx = Math.max(0, sliderIdx - 1);
