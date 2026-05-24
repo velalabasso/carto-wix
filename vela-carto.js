@@ -34,7 +34,7 @@ window.VelaCarto = {
 
     // Ponctuelles : marqueur rond à chaque début de station
     const SCIENCE_PT = {
-      hypernet     : { label: "Mesure Hypernet",    color: "#f97316" },
+      hypernet     : { label: "Mesure Hypernet",    color: "#f59e0b" },
       net          : { label: "Station Biologie",   color: "#10b981" },
       ctd_profile  : { label: "Station CTD",        color: "#a855f7" },
       ctd_intercomp: { label: "Station CTD",        color: "#a855f7" }
