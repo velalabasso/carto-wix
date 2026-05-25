@@ -30,7 +30,7 @@ window.VelaBlog = (function () {
       date     : "25 avril 2026",
       url      : "https://www.velalab.org/post/derniers-tests-et-pr%C3%A9paratifs",
       image    : "https://static.wixstatic.com/media/7feff5_189527ebedfb4892a159d8eeb8ea310d~mv2.jpg/v1/fill/w_305,h_229,fp_0.50_0.50,q_90,enc_avif,quality_auto/7feff5_189527ebedfb4892a159d8eeb8ea310d~mv2.jpg",
-      excerpt  : "Derniers préparatifs avant le grand départ — tests des équipements scientifiques et mise en route de l'expédition."
+      excerpt  : "Derniers préparatifs avant le grand départ, tests des équipements scientifiques et mise en route de l'expédition."
     }
   ];
 
