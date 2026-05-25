@@ -1,21 +1,17 @@
 /* =============================================================
    velacarto_blog.js — Markers blog pour VelaCarto
    Déposer dans le même répertoire GitHub que velacarto.js
-   Charger AVANT ou APRÈS velacarto.js (l'ordre n'importe pas).
 
    Pour ajouter un marker :
-   - dupliquer un objet dans le tableau BLOG_MARKERS ci-dessous
-   - renseigner coords OU timestamp (pas besoin des deux)
-   - si timestamp est renseigné, les coords sont calculées
-     automatiquement depuis les données GPS du bateau
+   - dupliquer un objet dans BLOG_MARKERS
+   - coords fixes  → renseigner coords: [lon, lat], laisser timestamp: null
+   - position GPS  → laisser coords: null, renseigner timestamp: "YYYY-MM-DDTHH:MM:SSZ"
+     (la position est résolue depuis les CSV une fois les données chargées)
    ============================================================= */
 
 window.VelaBlog = (function () {
 
   /* ===================== DONNÉES ===================== */
-  // coords   : [longitude, latitude] — fixe, ou null si on utilise timestamp
-  // timestamp: ISO UTC — la position sera résolue depuis les CSV du bateau
-  // image    : URL de l'image de couverture ("" pour aucune image)
 
   const BLOG_MARKERS = [
     {
@@ -29,7 +25,7 @@ window.VelaBlog = (function () {
     },
     {
       coords   : null,
-      timestamp: "2026-04-25T18:32:00Z",   // position calculée depuis les CSV
+      timestamp: "2026-04-25T18:32:00Z",
       title    : "Derniers tests et préparatifs",
       date     : "25 avril 2026",
       url      : "https://www.velalab.org/post/derniers-tests-et-pr%C3%A9paratifs",
@@ -107,47 +103,48 @@ window.VelaBlog = (function () {
     map.on("move", () => { if (vis) positionPopup(); });
   }
 
-  /* ===================== RÉSOLUTION DES TIMESTAMPS ===================== */
-
-  // Sépare les markers en deux groupes :
-  // - ceux avec coords fixes → placés immédiatement au init()
-  // - ceux avec timestamp   → placés après réception de "velacarto:pointsready"
-
-  function placeAll(map, isMini, markers) {
-    markers.forEach(m => {
-      const coords = m.coords || (window._velaCoordsAtTimestamp && window._velaCoordsAtTimestamp(m.timestamp));
-      if (coords) {
-        createBlogMarker(map, isMini, coords, m);
-      } else {
-        console.warn("[VelaBlog] Coordonnées introuvables pour :", m.title);
-      }
-    });
-  }
-
   /* ===================== API PUBLIQUE ===================== */
 
-  function init(map, isMini = false) {
-    const fixed      = BLOG_MARKERS.filter(m => m.coords);
-    const withTs     = BLOG_MARKERS.filter(m => !m.coords && m.timestamp);
+  // map et isMini sont stockés à l'appel de init(),
+  // puis utilisés dès que les points GPS sont disponibles.
+  let _map   = null;
+  let _isMini = false;
 
-    // Markers à coords fixes : placés immédiatement
-    placeAll(map, isMini, fixed);
-
-    // Markers avec timestamp : attendre que les points GPS soient chargés
-    if (withTs.length) {
-      if (window._velaCoordsAtTimestamp) {
-        // Les points sont déjà disponibles (velacarto_blog.js chargé après)
-        placeAll(map, isMini, withTs);
-      } else {
-        // Attendre l'événement émis par refreshLiveTrack()
-        window.addEventListener("velacarto:pointsready", () => {
-          placeAll(map, isMini, withTs);
-        }, { once: true });
-      }
-    }
+  function placeFixed() {
+    BLOG_MARKERS
+      .filter(m => m.coords)
+      .forEach(m => createBlogMarker(_map, _isMini, m.coords, m));
   }
 
-  // Signale que le script est prêt
+  function placeTimestamped() {
+    BLOG_MARKERS
+      .filter(m => !m.coords && m.timestamp)
+      .forEach(m => {
+        const coords = window._velaCoordsAtTimestamp
+          ? window._velaCoordsAtTimestamp(m.timestamp)
+          : null;
+        if (coords) {
+          createBlogMarker(_map, _isMini, coords, m);
+        } else {
+          console.warn("[VelaBlog] Aucun point GPS trouvé pour le timestamp :", m.timestamp);
+        }
+      });
+  }
+
+  function init(map, isMini) {
+    _map    = map;
+    _isMini = isMini || false;
+
+    // Markers à coords fixes : placés immédiatement
+    placeFixed();
+
+    // Markers avec timestamp : placés dès que les CSV sont chargés.
+    // On écoute toujours l'événement — il est émis par refreshLiveTrack()
+    // après chaque chargement, donc on { once: true } pour n'agir qu'une fois.
+    window.addEventListener("velacarto:pointsready", placeTimestamped, { once: true });
+  }
+
+  // Signale que ce script est prêt (pour velacarto.js s'il est chargé avant)
   window.dispatchEvent(new Event("velablog:ready"));
 
   return { init };
