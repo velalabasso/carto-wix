@@ -757,6 +757,27 @@ window.VelaCarto = {
       return cumDist[lo];
     }
 
+    /* ===================== COORDS AT TIMESTAMP ===================== */
+
+    // Retourne [lon, lat] du point le plus proche d'un timestamp ISO ou ms.
+    // Exposé sur window pour que velacarto_blog.js puisse l'utiliser.
+    function coordsAtTimestamp(tsIsoOrMs) {
+      if (!allPoints.length) return null;
+      const ms = typeof tsIsoOrMs === "number" ? tsIsoOrMs : new Date(tsIsoOrMs).getTime();
+      let lo = 0, hi = allPoints.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (allPoints[mid].timestampMs <= ms) lo = mid; else hi = mid - 1;
+      }
+      if (lo < allPoints.length - 1) {
+        const dLo = Math.abs(allPoints[lo].timestampMs - ms);
+        const dHi = Math.abs(allPoints[lo + 1].timestampMs - ms);
+        if (dHi < dLo) lo = lo + 1;
+      }
+      return [allPoints[lo].lon, allPoints[lo].lat];
+    }
+    window._velaCoordsAtTimestamp = coordsAtTimestamp;
+
     /* ===================== REFRESH ===================== */
 
     async function refreshLiveTrack() {
@@ -773,6 +794,9 @@ window.VelaCarto = {
 
       renderAll();
       updateBoatUI();
+
+      // Notifier velacarto_blog.js que les points sont chargés
+      window.dispatchEvent(new Event("velacarto:pointsready"));
     }
 
     /* ===================== MAP LOAD ===================== */
