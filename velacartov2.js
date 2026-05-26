@@ -949,4 +949,4 @@ window.VelaCarto = {
       updateBoatUI();
     });
   }
-};
+}; 
