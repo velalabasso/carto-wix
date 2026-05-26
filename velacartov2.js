@@ -846,7 +846,7 @@ window.VelaCarto = {
       /* ===================== MARQUEUR BATEAU ===================== */
 
       // Taille divisée par 2 par rapport à l'original
-      const boatSize = isMini ? 20 : 30;
+      const boatSize = isMini ? 30 : 45;
 
       const boatEl = document.createElement("div");
       Object.assign(boatEl.style, {
