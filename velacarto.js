@@ -16,7 +16,7 @@ window.VelaCarto = {
     const refreshMs         = Number(options.refreshMs || 120000);
     const enableAutoRefresh = options.enableAutoRefresh !== false;
 
-    // ── MODIFICATION 2 : timestamp de départ fixe (25/04/2026 18:32 UTC) ──
+    // ── timestamp de départ fixe (25/04/2026 18:32 UTC) ──
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
     /* ===================== ALLURE FR ===================== */
@@ -35,14 +35,12 @@ window.VelaCarto = {
 
     /* ===================== SCIENCE CONFIG ===================== */
 
-    // Ponctuelles : marqueur rond à chaque début de station
     const SCIENCE_PT = {
       hypernet     : { label: "Mesure Hypernet",    color: "#f59e0b" },
       net          : { label: "Station Biologie",   color: "#10b981" },
       ctd_profile  : { label: "Station CTD",        color: "#a855f7" },
       ctd_intercomp: { label: "Station CTD",        color: "#a855f7" }
     };
-    // Continues : colorent le tracé en surimpression
     const SCIENCE_CT = {
       inline   : { label: "Inline (continu)",   color: "#ef4444" },
       ctd_keel : { label: "CTD Keel (continu)", color: "#3b82f6" }
@@ -50,11 +48,10 @@ window.VelaCarto = {
 
     const ALL_SCIENCE = [...Object.keys(SCIENCE_PT), ...Object.keys(SCIENCE_CT)];
 
-    // État des checkboxes (toutes actives par défaut)
     const sciVis = {};
     ALL_SCIENCE.forEach(k => sciVis[k] = true);
 
-    /* ===================== COULEURS BORDURES (version claire) ===================== */
+    /* ===================== COULEURS BORDURES ===================== */
     function lightenColor(hex, amount = 0.45) {
       const r = parseInt(hex.slice(1,3), 16);
       const g = parseInt(hex.slice(3,5), 16);
@@ -227,11 +224,6 @@ window.VelaCarto = {
 
     /* ===================== GEOJSON HELPERS ===================== */
 
-    // ── MODIFICATION 3 : toLineGeoJSON crée des segments séparés par source
-    // pour relier proprement le dernier point d'un fichier au premier du suivant.
-    // Puisque dedupeSort fusionne et trie tous les points chronologiquement,
-    // la polyline unique suffit — mais on s'assure qu'aucun filtre de distance
-    // ne coupe les liaisons inter-fichiers (voir buildCumDist ci-dessous).
     function toLineGeoJSON(points) {
       if (!points.length) return { type: "FeatureCollection", features: [] };
       let coords = points.map(p => [p.lon, p.lat]);
@@ -343,11 +335,6 @@ window.VelaCarto = {
         points: parseTrackCSV(await fetchText(info.url), info.path)
       }));
 
-      // ── MODIFICATION 3 : on collecte le dernier point de chaque fichier nmea
-      // pour vérifier la continuité dans les logs, mais le tracé est simplement
-      // la fusion triée de tous les points — dedupeSort assure l'ordre chronologique
-      // et toLineGeoJSON trace une polyligne unique qui relie automatiquement
-      // le dernier point d'un fichier au premier du suivant.
       const nmeaPoints = nmeaResults.flatMap(r => r.points);
       const livePoints = dedupeSort([...mainPoints, ...nmeaPoints]);
 
@@ -517,8 +504,6 @@ window.VelaCarto = {
 
     /* ===================== PANNEAU NAV ===================== */
 
-    // ── MODIFICATION 2 : departureMs est fixé à la constante DEPARTURE_MS,
-    // indépendamment du premier point chargé.
     let departureMs = DEPARTURE_MS;
 
     let navPanel = null;
@@ -566,7 +551,6 @@ window.VelaCarto = {
       document.getElementById("vn-tws").textContent     = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
       document.getElementById("vn-allure").textContent  = p.allure ? allureFr(p.allure) : "—";
 
-      // ── MODIFICATION 2 : elapsed calculé depuis DEPARTURE_MS (fixe)
       const elapsedEl = document.getElementById("vn-elapsed");
       if (elapsedEl) {
         const elapsed = p.timestampMs - DEPARTURE_MS;
@@ -735,9 +719,6 @@ window.VelaCarto = {
 
     let cumDist = [];
 
-    // ── MODIFICATION 3 : suppression du filtre `seg < 1` qui ignorait
-    // les grands sauts entre fichiers CSV. Tous les segments sont maintenant
-    // comptabilisés, ce qui permet aussi de tracer la liaison inter-fichiers.
     function buildCumDist(pts) {
       const d = new Array(pts.length).fill(0);
       for (let i = 1; i < pts.length; i++) {
@@ -759,8 +740,6 @@ window.VelaCarto = {
 
     /* ===================== COORDS AT TIMESTAMP ===================== */
 
-    // Retourne [lon, lat] du point le plus proche d'un timestamp ISO ou ms.
-    // Exposé sur window pour que velacarto_blog.js puisse l'utiliser.
     function coordsAtTimestamp(tsIsoOrMs) {
       if (!allPoints.length) return null;
       const ms = typeof tsIsoOrMs === "number" ? tsIsoOrMs : new Date(tsIsoOrMs).getTime();
@@ -785,8 +764,6 @@ window.VelaCarto = {
       allPoints = livePoints;
       cumDist   = buildCumDist(allPoints);
 
-      // departureMs est fixe (DEPARTURE_MS), pas besoin de le recalculer
-
       hourlyPts = buildHourly(allPoints);
       sliderIdx = Math.max(hourlyPts.length - 1, 0);
 
@@ -795,7 +772,6 @@ window.VelaCarto = {
       renderAll();
       updateBoatUI();
 
-      // Notifier velacarto_blog.js que les points sont chargés
       window.dispatchEvent(new Event("velacarto:pointsready"));
     }
 
@@ -864,43 +840,9 @@ window.VelaCarto = {
         }
       });
 
-      /* ---- Marqueur bateau SVG ---- */
+      /* ===================== MARQUEUR BATEAU (image voilier.jpg) ===================== */
+
       const boatSize = isMini ? 40 : 60;
-
-      const boatSVG = `<svg xmlns="http://www.w3.org/2000/svg"
-        width="${boatSize}" height="${boatSize}"
-        viewBox="-20 -30 40 60">
-
-        <defs>
-          <filter id="bsf" x="-60%" y="-60%" width="220%" height="220%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
-          </filter>
-        </defs>
-
-        <path d="M 0,-26
-                 C 0.5,-20  3,-10  4,0
-                 C 5,8     5,14   4,18
-                 C 2,22    0,23   0,23
-                 C 0,23   -2,22  -4,18
-                 C -5,14  -5,8   -4,0
-                 C -3,-10 -0.5,-20  0,-26 Z"
-          fill="white" stroke="#5F7D95" stroke-width="1.4"
-          filter="url(#bsf)"/>
-
-        <line x1="0" y1="-24" x2="0" y2="20"
-          stroke="#5F7D95" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.3"/>
-
-        <circle cx="0" cy="-8" r="1.4" fill="#aabcca" stroke="white" stroke-width="0.5"/>
-
-        <path d="M 0,-8 Q -7,2 -6,18"
-          fill="none" stroke="#5F7D95" stroke-width="1.6"
-          stroke-linecap="round" opacity="0.85"/>
-
-        <path d="M 0,-24 Q -7,-16 0,-8"
-          fill="none" stroke="#5F7D95" stroke-width="1.3"
-          stroke-linecap="round" opacity="0.75"/>
-
-      </svg>`;
 
       const boatEl = document.createElement("div");
       Object.assign(boatEl.style, {
@@ -910,7 +852,36 @@ window.VelaCarto = {
         transformOrigin: "center center",
         transition: "transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
       });
-      boatEl.innerHTML = boatSVG;
+
+      const boatImg = document.createElement("img");
+      boatImg.src = "https://raw.githubusercontent.com/velalabasso/carto-wix/main/voilier.jpg";
+      boatImg.alt = "voilier";
+      Object.assign(boatImg.style, {
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block",
+        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
+      });
+      boatImg.onerror = () => {
+        // Fallback SVG si l'image ne charge pas
+        boatEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg"
+          width="${boatSize}" height="${boatSize}" viewBox="-20 -30 40 60">
+          <defs>
+            <filter id="bsf" x="-60%" y="-60%" width="220%" height="220%">
+              <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
+            </filter>
+          </defs>
+          <path d="M 0,-26 C 0.5,-20 3,-10 4,0 C 5,8 5,14 4,18 C 2,22 0,23 0,23
+                   C 0,23 -2,22 -4,18 C -5,14 -5,8 -4,0 C -3,-10 -0.5,-20 0,-26 Z"
+            fill="white" stroke="#5F7D95" stroke-width="1.4" filter="url(#bsf)"/>
+          <path d="M 0,-8 Q -7,2 -6,18" fill="none" stroke="#5F7D95" stroke-width="1.6"
+            stroke-linecap="round" opacity="0.85"/>
+          <path d="M 0,-24 Q -7,-16 0,-8" fill="none" stroke="#5F7D95" stroke-width="1.3"
+            stroke-linecap="round" opacity="0.75"/>
+        </svg>`;
+      };
+      boatEl.appendChild(boatImg);
 
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
         .setLngLat(fallbackCenter).addTo(map);
@@ -926,9 +897,7 @@ window.VelaCarto = {
       }
       window._velaComputeBearing = computeBearing;
 
-      /* ---- Blog markers — chargés depuis velacarto_blog.js ---- */
-      // VelaBlog expose window.VelaBlog.init(map, isMini) une fois prêt.
-      // On appelle init() si le script est déjà chargé, sinon on attend l'événement.
+      /* ---- Blog markers ---- */
       if (window.VelaBlog && window.VelaBlog.init) {
         window.VelaBlog.init(map, isMini);
       } else {
