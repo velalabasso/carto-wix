@@ -16,7 +16,6 @@ window.VelaCarto = {
     const refreshMs         = Number(options.refreshMs || 120000);
     const enableAutoRefresh = options.enableAutoRefresh !== false;
 
-    // ── timestamp de départ fixe (25/04/2026 18:32 UTC) ──
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
     /* ===================== ALLURE FR ===================== */
@@ -264,7 +263,7 @@ window.VelaCarto = {
       return { type: "FeatureCollection", features };
     }
 
-    /* ===================== HYPERNET ===================== */
+    /* ===================== HAVERSINE ===================== */
 
     function haversine_nm_js(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -274,25 +273,43 @@ window.VelaCarto = {
       return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
     }
 
+    /* ===================== HYPERNET : 1 point par mille nautique ===================== */
+
     function buildHypernetGeoJSON(slice) {
       const features = [];
-      let segment = [];
+      const INTERVAL_NM = 1.0; // 1 mille nautique entre chaque point
+      let inSegment = false;
+      let distSinceLast = 0;
+      let lastPt = null;
+
       slice.forEach(p => {
         const on = p.hypernet === "ON";
         if (on) {
-          segment.push([p.lon, p.lat]);
-        } else {
-          if (segment.length >= 2) {
+          if (!inSegment) {
+            // Début d'un segment hypernet : on émet le premier point
             features.push({ type: "Feature", properties: {},
-              geometry: { type: "LineString", coordinates: segment } });
+              geometry: { type: "Point", coordinates: [p.lon, p.lat] } });
+            distSinceLast = 0;
+            lastPt = p;
+            inSegment = true;
+          } else {
+            // On accumule la distance
+            const d = haversine_nm_js(lastPt.lat, lastPt.lon, p.lat, p.lon);
+            distSinceLast += d;
+            if (distSinceLast >= INTERVAL_NM) {
+              features.push({ type: "Feature", properties: {},
+                geometry: { type: "Point", coordinates: [p.lon, p.lat] } });
+              distSinceLast = 0;
+            }
+            lastPt = p;
           }
-          segment = [];
+        } else {
+          inSegment = false;
+          lastPt = null;
+          distSinceLast = 0;
         }
       });
-      if (segment.length >= 2) {
-        features.push({ type: "Feature", properties: {},
-          geometry: { type: "LineString", coordinates: segment } });
-      }
+
       return { type: "FeatureCollection", features };
     }
 
@@ -549,7 +566,6 @@ window.VelaCarto = {
       document.getElementById("vn-date").textContent    = dateStr;
       document.getElementById("vn-sog").textContent     = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
       document.getElementById("vn-tws").textContent     = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
-      document.getElementById("vn-allure").textContent  = p.allure ? allureFr(p.allure) : "—";
 
       const elapsedEl = document.getElementById("vn-elapsed");
       if (elapsedEl) {
@@ -572,7 +588,7 @@ window.VelaCarto = {
     /* ===================== PANNEAU SCIENCE ===================== */
 
     const sciRows = [
-      { keys: ["hypernet"],                   label: "Mesure Hypernet",    color: SCIENCE_PT.hypernet.color,    type: "line" },
+      { keys: ["hypernet"],                   label: "Mesure Hypernet",    color: SCIENCE_PT.hypernet.color,    type: "dot"  },
       { keys: ["net"],                         label: "Station Biologie",   color: SCIENCE_PT.net.color,         type: "dot"  },
       { keys: ["ctd_profile","ctd_intercomp"], label: "Station CTD",        color: SCIENCE_PT.ctd_profile.color, type: "dot"  },
       { keys: ["inline"],                      label: "Inline (continu)",   color: SCIENCE_CT.inline.color,      type: "line" },
@@ -673,6 +689,7 @@ window.VelaCarto = {
         if (src) src.setData(sciVis[k] ? buildContGeoJSON(slice, k) : EMPTY_FC);
       });
 
+      // Hypernet : points espacés d'1 mille nautique
       const srcH = map.getSource("sci-pt-hypernet");
       if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
@@ -691,7 +708,7 @@ window.VelaCarto = {
       if (boatMarker) boatMarker.setLngLat([p.lon, p.lat]);
 
       if (boatMarker && window._velaComputeBearing) {
-        let bearing = 90; // rotation initiale par défaut
+        let bearing = 90;
         if (sliderIdx > 0) {
           const prev = hourlyPts[sliderIdx - 1];
           bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
@@ -809,18 +826,23 @@ window.VelaCarto = {
         });
       });
 
-      /* ---- Layers science ponctuelles ---- */
+      /* ---- Hypernet : points espacés, visibles seulement à partir du zoom 6 ---- */
       map.addSource("sci-pt-hypernet", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
-        id: "sci-pt-hypernet-circle", type: "line", source: "sci-pt-hypernet",
-        layout: { "line-join": "round", "line-cap": "round" },
+        id: "sci-pt-hypernet-circle", type: "circle", source: "sci-pt-hypernet",
+        minzoom: 6,
         paint: {
-          "line-color": SCIENCE_PT.hypernet.color,
-          "line-width": isMini ? 3 : 5,
-          "line-opacity": 0.95
+          "circle-radius": isMini ? 3 : 5,
+          "circle-color": SCIENCE_PT.hypernet.color,
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": STROKE_COLORS.hypernet,
+          // fondu progressif entre zoom 6 et 7
+          "circle-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1],
+          "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1]
         }
       });
 
+      /* ---- Station Biologie ---- */
       map.addSource("sci-pt-net", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
         id: "sci-pt-net-circle", type: "circle", source: "sci-pt-net",
@@ -832,6 +854,7 @@ window.VelaCarto = {
         }
       });
 
+      /* ---- Station CTD ---- */
       map.addSource("sci-pt-ctd", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
         id: "sci-pt-ctd-circle", type: "circle", source: "sci-pt-ctd",
@@ -845,7 +868,6 @@ window.VelaCarto = {
 
       /* ===================== MARQUEUR BATEAU ===================== */
 
-      // Taille divisée par 2 par rapport à l'original
       const boatSize = isMini ? 30 : 45;
 
       const boatEl = document.createElement("div");
@@ -871,7 +893,6 @@ window.VelaCarto = {
       boatImg.onload  = () => console.log("✅ voilier.png chargé :", boatImg.src);
       boatEl.appendChild(boatImg);
 
-      // Rotation initiale de 90° à droite
       boatEl.style.transform = "rotate(90deg)";
 
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
@@ -884,7 +905,6 @@ window.VelaCarto = {
         const y = Math.sin(dLon) * Math.cos(toRad(lat2));
         const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
                 - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-        // +90° pour corriger l'orientation du PNG
         return (toDeg(Math.atan2(y, x)) + 360 + 90) % 360;
       }
       window._velaComputeBearing = computeBearing;
