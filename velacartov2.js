@@ -690,9 +690,12 @@ window.VelaCarto = {
       const p = hourlyPts[sliderIdx];
       if (boatMarker) boatMarker.setLngLat([p.lon, p.lat]);
 
-      if (boatMarker && sliderIdx > 0 && window._velaComputeBearing) {
-        const prev = hourlyPts[sliderIdx - 1];
-        const bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
+      if (boatMarker && window._velaComputeBearing) {
+        let bearing = 90; // rotation initiale par défaut
+        if (sliderIdx > 0) {
+          const prev = hourlyPts[sliderIdx - 1];
+          bearing = window._velaComputeBearing(prev.lat, prev.lon, p.lat, p.lon);
+        }
         const boatEl = boatMarker.getElement().firstElementChild;
         if (boatEl) boatEl.style.transform = `rotate(${bearing}deg)`;
       }
@@ -840,9 +843,10 @@ window.VelaCarto = {
         }
       });
 
-      /* ===================== MARQUEUR BATEAU (image voilier.jpg) ===================== */
+      /* ===================== MARQUEUR BATEAU ===================== */
 
-      const boatSize = isMini ? 40 : 60;
+      // Taille divisée par 2 par rapport à l'original
+      const boatSize = isMini ? 20 : 30;
 
       const boatEl = document.createElement("div");
       Object.assign(boatEl.style, {
@@ -867,6 +871,9 @@ window.VelaCarto = {
       boatImg.onload  = () => console.log("✅ voilier.png chargé :", boatImg.src);
       boatEl.appendChild(boatImg);
 
+      // Rotation initiale de 90° à droite
+      boatEl.style.transform = "rotate(90deg)";
+
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
         .setLngLat(fallbackCenter).addTo(map);
 
@@ -877,7 +884,8 @@ window.VelaCarto = {
         const y = Math.sin(dLon) * Math.cos(toRad(lat2));
         const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
                 - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+        // +90° pour corriger l'orientation du PNG
+        return (toDeg(Math.atan2(y, x)) + 360 + 90) % 360;
       }
       window._velaComputeBearing = computeBearing;
 
@@ -949,4 +957,4 @@ window.VelaCarto = {
       updateBoatUI();
     });
   }
-}; 
+};
