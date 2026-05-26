@@ -854,7 +854,7 @@ window.VelaCarto = {
       });
 
       const boatImg = document.createElement("img");
-      boatImg.src = "https://cdn.jsdelivr.net/gh/velalabasso/carto-wix@main/voilier.png";
+      boatImg.src = "https://cdn.jsdelivr.net/gh/velalabasso/carto-wix@main/voilier.png?v=" + Date.now();
       boatImg.alt = "voilier";
       Object.assign(boatImg.style, {
         width: "100%",
