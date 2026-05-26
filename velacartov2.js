@@ -519,11 +519,11 @@ window.VelaCarto = {
       navPanel.innerHTML = `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:5px;">Navigation</div>
         <div><span style="color:#c8dcea">Date</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
+        <div><span style="color:#c8dcea">Temps</span>&nbsp;<strong id="vn-elapsed">—</strong></div>
+        <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
-        <div><span style="color:#c8dcea">Allure</span>&nbsp;<strong id="vn-allure">—</strong></div>
-        <div><span style="color:#c8dcea">Temps départ</span>&nbsp;<strong id="vn-elapsed">—</strong></div>
-        <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>`;
+        `;
       bottomLeftContainer.appendChild(navPanel);
     }
 
