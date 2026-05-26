@@ -863,24 +863,8 @@ window.VelaCarto = {
         display: "block",
         filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
       });
-      boatImg.onerror = () => {
-        // Fallback SVG si l'image ne charge pas
-        boatEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg"
-          width="${boatSize}" height="${boatSize}" viewBox="-20 -30 40 60">
-          <defs>
-            <filter id="bsf" x="-60%" y="-60%" width="220%" height="220%">
-              <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,0.5)"/>
-            </filter>
-          </defs>
-          <path d="M 0,-26 C 0.5,-20 3,-10 4,0 C 5,8 5,14 4,18 C 2,22 0,23 0,23
-                   C 0,23 -2,22 -4,18 C -5,14 -5,8 -4,0 C -3,-10 -0.5,-20 0,-26 Z"
-            fill="white" stroke="#5F7D95" stroke-width="1.4" filter="url(#bsf)"/>
-          <path d="M 0,-8 Q -7,2 -6,18" fill="none" stroke="#5F7D95" stroke-width="1.6"
-            stroke-linecap="round" opacity="0.85"/>
-          <path d="M 0,-24 Q -7,-16 0,-8" fill="none" stroke="#5F7D95" stroke-width="1.3"
-            stroke-linecap="round" opacity="0.75"/>
-        </svg>`;
-      };
+      boatImg.onerror = () => console.error("❌ voilier.png non chargé :", boatImg.src);
+      boatImg.onload  = () => console.log("✅ voilier.png chargé :", boatImg.src);
       boatEl.appendChild(boatImg);
 
       boatMarker = new maptilersdk.Marker({ element: boatEl, anchor: "center" })
