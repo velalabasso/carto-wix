@@ -31,6 +31,15 @@ window.VelaBlog = (function () {
       url      : "https://www.velalab.org/post/derniers-tests-et-pr%C3%A9paratifs",
       image    : "https://static.wixstatic.com/media/7feff5_189527ebedfb4892a159d8eeb8ea310d~mv2.jpg/v1/fill/w_305,h_229,fp_0.50_0.50,q_90,enc_avif,quality_auto/7feff5_189527ebedfb4892a159d8eeb8ea310d~mv2.jpg",
       excerpt  : "Derniers préparatifs avant le grand départ, tests des équipements scientifiques et mise en route de l'expédition."
+    },
+    {
+      coords   : null,
+      timestamp: "2026-05-18T14:06:00Z",
+      title    : "Premiers milles, premières galères",
+      date     : "18 mai 2026",
+      url      : "https://www.velalab.org/post/premiers-milles-premi%C3%A8res-gal%C3%A8res",
+      image    : "https://static.wixstatic.com/media/7feff5_76cd0830c1274586875d5e664d388d2b~mv2.jpeg",
+      excerpt  : "Derniers adieux sur le quai, les amarres sont larguées, notre nouvelle trinquette bretonne et la grand-voile sont hissées."
     }
   ];
 
