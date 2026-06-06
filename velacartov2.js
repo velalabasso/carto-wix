@@ -831,7 +831,7 @@ window.VelaCarto = {
         type: "geojson",
         data: EMPTY_FC,
         cluster: true,
-        clusterMaxZoom: 10,  // au-dessus du zoom 10 → points individuels
+        clusterMaxZoom: 7,   // au-dessus du zoom 7 → points individuels
         clusterRadius: 40    // rayon de regroupement en pixels
       });
 
@@ -862,15 +862,17 @@ window.VelaCarto = {
         }
       });
 
-      /* ---- Station Biologie — rayon réduit ---- */
+      /* ---- Station Biologie — même taille que Hypernet ---- */
       map.addSource("sci-pt-net", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
         id: "sci-pt-net-circle", type: "circle", source: "sci-pt-net",
         paint: {
-          "circle-radius"        : isMini ? 3 : 5,
-          "circle-color"         : SCIENCE_PT.net.color,
-          "circle-stroke-width"  : 1.5,
-          "circle-stroke-color"  : STROKE_COLORS.net
+          "circle-radius"         : isMini ? 3 : 5,
+          "circle-color"          : SCIENCE_PT.net.color,
+          "circle-stroke-width"   : 1.5,
+          "circle-stroke-color"   : STROKE_COLORS.net,
+          "circle-opacity"        : ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1],
+          "circle-stroke-opacity" : ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1]
         }
       });
 
