@@ -840,7 +840,7 @@ window.VelaCarto = {
         id: "sci-pt-hypernet-cluster", type: "circle", source: "sci-pt-hypernet",
         filter: ["has", "point_count"],
         paint: {
-          "circle-radius"        : isMini ? 4 : 6,
+          "circle-radius"        : isMini ? 3 : 3,
           "circle-color"         : SCIENCE_PT.hypernet.color,
           "circle-stroke-width"  : 1.5,
           "circle-stroke-color"  : STROKE_COLORS.hypernet
@@ -853,7 +853,7 @@ window.VelaCarto = {
         filter: ["!", ["has", "point_count"]],
         minzoom: 6,
         paint: {
-          "circle-radius"         : isMini ? 3 : 5,
+          "circle-radius"         : isMini ? 3 : 3,
           "circle-color"          : SCIENCE_PT.hypernet.color,
           "circle-stroke-width"   : 1.5,
           "circle-stroke-color"   : STROKE_COLORS.hypernet,
@@ -867,7 +867,7 @@ window.VelaCarto = {
       map.addLayer({
         id: "sci-pt-net-circle", type: "circle", source: "sci-pt-net",
         paint: {
-          "circle-radius"        : isMini ? 3 : 5,
+          "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.net.color,
           "circle-stroke-width"  : 1.5,
           "circle-stroke-color"  : STROKE_COLORS.net
