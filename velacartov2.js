@@ -277,7 +277,7 @@ window.VelaCarto = {
 
     function buildHypernetGeoJSON(slice) {
       const features = [];
-      const INTERVAL_NM = 1.0; // 1 mille nautique entre chaque point
+      const INTERVAL_NM = 1.0;
       let inSegment = false;
       let distSinceLast = 0;
       let lastPt = null;
@@ -286,14 +286,12 @@ window.VelaCarto = {
         const on = p.hypernet === "ON";
         if (on) {
           if (!inSegment) {
-            // Début d'un segment hypernet : on émet le premier point
             features.push({ type: "Feature", properties: {},
               geometry: { type: "Point", coordinates: [p.lon, p.lat] } });
             distSinceLast = 0;
             lastPt = p;
             inSegment = true;
           } else {
-            // On accumule la distance
             const d = haversine_nm_js(lastPt.lat, lastPt.lon, p.lat, p.lon);
             distSinceLast += d;
             if (distSinceLast >= INTERVAL_NM) {
@@ -826,31 +824,53 @@ window.VelaCarto = {
         });
       });
 
-      /* ---- Hypernet : points espacés, visibles seulement à partir du zoom 6 ---- */
-      map.addSource("sci-pt-hypernet", { type: "geojson", data: EMPTY_FC });
+      /* ---- Hypernet : clustering natif MapTiler/MapLibre ---- */
+      // Au dézoom : 1 point représentatif par groupe (cluster)
+      // Au zoom élevé (> clusterMaxZoom) : tous les points individuels
+      map.addSource("sci-pt-hypernet", {
+        type: "geojson",
+        data: EMPTY_FC,
+        cluster: true,
+        clusterMaxZoom: 10,  // au-dessus du zoom 10 → points individuels
+        clusterRadius: 40    // rayon de regroupement en pixels
+      });
+
+      // Cercle cluster (dézoom) — représente un groupe de points
       map.addLayer({
-        id: "sci-pt-hypernet-circle", type: "circle", source: "sci-pt-hypernet",
-        minzoom: 6,
+        id: "sci-pt-hypernet-cluster", type: "circle", source: "sci-pt-hypernet",
+        filter: ["has", "point_count"],
         paint: {
-          "circle-radius": isMini ? 3 : 5,
-          "circle-color": SCIENCE_PT.hypernet.color,
-          "circle-stroke-width": 1.5,
-          "circle-stroke-color": STROKE_COLORS.hypernet,
-          // fondu progressif entre zoom 6 et 7
-          "circle-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1],
-          "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1]
+          "circle-radius"        : isMini ? 4 : 6,
+          "circle-color"         : SCIENCE_PT.hypernet.color,
+          "circle-stroke-width"  : 1.5,
+          "circle-stroke-color"  : STROKE_COLORS.hypernet
         }
       });
 
-      /* ---- Station Biologie ---- */
+      // Points individuels (zoom élevé) avec fondu progressif
+      map.addLayer({
+        id: "sci-pt-hypernet-circle", type: "circle", source: "sci-pt-hypernet",
+        filter: ["!", ["has", "point_count"]],
+        minzoom: 6,
+        paint: {
+          "circle-radius"         : isMini ? 3 : 5,
+          "circle-color"          : SCIENCE_PT.hypernet.color,
+          "circle-stroke-width"   : 1.5,
+          "circle-stroke-color"   : STROKE_COLORS.hypernet,
+          "circle-opacity"        : ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1],
+          "circle-stroke-opacity" : ["interpolate", ["linear"], ["zoom"], 6, 0, 7, 1]
+        }
+      });
+
+      /* ---- Station Biologie — rayon réduit ---- */
       map.addSource("sci-pt-net", { type: "geojson", data: EMPTY_FC });
       map.addLayer({
         id: "sci-pt-net-circle", type: "circle", source: "sci-pt-net",
         paint: {
-          "circle-radius": isMini ? 5 : 8,
-          "circle-color": SCIENCE_PT.net.color,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": STROKE_COLORS.net
+          "circle-radius"        : isMini ? 3 : 5,
+          "circle-color"         : SCIENCE_PT.net.color,
+          "circle-stroke-width"  : 1.5,
+          "circle-stroke-color"  : STROKE_COLORS.net
         }
       });
 
@@ -859,10 +879,10 @@ window.VelaCarto = {
       map.addLayer({
         id: "sci-pt-ctd-circle", type: "circle", source: "sci-pt-ctd",
         paint: {
-          "circle-radius": isMini ? 5 : 8,
-          "circle-color": SCIENCE_PT.ctd_profile.color,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": STROKE_COLORS.ctd_profile
+          "circle-radius"        : isMini ? 5 : 8,
+          "circle-color"         : SCIENCE_PT.ctd_profile.color,
+          "circle-stroke-width"  : 2,
+          "circle-stroke-color"  : STROKE_COLORS.ctd_profile
         }
       });
 
@@ -872,22 +892,22 @@ window.VelaCarto = {
 
       const boatEl = document.createElement("div");
       Object.assign(boatEl.style, {
-        width: boatSize + "px",
-        height: boatSize + "px",
-        pointerEvents: "none",
+        width          : boatSize + "px",
+        height         : boatSize + "px",
+        pointerEvents  : "none",
         transformOrigin: "center center",
-        transition: "transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
+        transition     : "transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
       });
 
       const boatImg = document.createElement("img");
       boatImg.src = "https://raw.githubusercontent.com/velalabasso/carto-wix/main/voilier.png?v=" + Date.now();
       boatImg.alt = "voilier";
       Object.assign(boatImg.style, {
-        width: "100%",
-        height: "100%",
-        objectFit: "contain",
-        display: "block",
-        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
+        width     : "100%",
+        height    : "100%",
+        objectFit : "contain",
+        display   : "block",
+        filter    : "drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
       });
       boatImg.onerror = () => console.error("❌ voilier.png non chargé :", boatImg.src);
       boatImg.onload  = () => console.log("✅ voilier.png chargé :", boatImg.src);
