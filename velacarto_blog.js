@@ -85,7 +85,9 @@ window.VelaBlog = (function () {
       <div style="text-align:left;">
         <h2 style="font-family:Helvetica,Arial;color:#5F7D95;margin:0 0 6px 0;font-size:${isMini ? "13px" : "16px"};">${props.title}</h2>
         <div style="color:gray;font-size:12px;margin-bottom:10px;">${props.date}</div>
-        ${props.image ? `<img src="${props.image}" style="width:100%;height:auto;border-radius:6px;margin-bottom:8px;">` : ""}
+        ${props.image
+          ? `<img src="${props.image}" style="width:100%;height:120px;object-fit:cover;border-radius:6px;margin-bottom:8px;">`
+          : ""}
         <p style="font-size:12px;line-height:1.4;margin-bottom:10px;">${props.excerpt}</p>
         <a href="${props.url}" target="_blank"
           style="display:inline-block;text-decoration:none;background:#5F7D95;color:white;padding:8px 14px;border-radius:20px;font-size:14px;">
@@ -116,7 +118,7 @@ window.VelaBlog = (function () {
 
   // map et isMini sont stockés à l'appel de init(),
   // puis utilisés dès que les points GPS sont disponibles.
-  let _map   = null;
+  let _map    = null;
   let _isMini = false;
 
   function placeFixed() {
