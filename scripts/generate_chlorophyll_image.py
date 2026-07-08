@@ -45,8 +45,8 @@ VARIABLE   = "CHL"
 # Zone géographique couverte par l'image (Méditerranée -> traversée
 # Atlantique -> Caraïbes, cohérent avec le tracé pointillé annexe de la
 # carte). À élargir/rétrécir si besoin — impacte la taille du fichier PNG.
-MIN_LON, MAX_LON = -75.0, 20.0
-MIN_LAT, MAX_LAT = -5.0, 50.0
+MIN_LON, MAX_LON = -180.0, 180.0
+MIN_LAT, MAX_LAT = -85.0, 85.0
 
 # Échelle de couleur (mg/m3), log car la concentration varie sur plusieurs
 # ordres de grandeur entre eaux oligotrophes et zones côtières riches.
