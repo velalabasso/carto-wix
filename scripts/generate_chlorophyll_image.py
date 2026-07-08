@@ -55,6 +55,7 @@ VMIN, VMAX = 0.01, 10.0
 OUTPUT_DIR  = "chlorophyll"
 OUTPUT_PNG  = os.path.join(OUTPUT_DIR, "chlorophyll_latest.png")
 OUTPUT_META = os.path.join(OUTPUT_DIR, "chlorophyll_latest.json")
+OUTPUT_GRID = os.path.join(OUTPUT_DIR, "chlorophyll_latest_grid.json")
 TMP_NC      = "chl_subset.nc"
 
 
@@ -132,6 +133,12 @@ def main():
     # Écrase les valeurs <= 0 (invalides pour une échelle log) en NaN
     data = np.where(data > 0, data, np.nan)
 
+    # Grille native (avant ré-échantillonnage Mercator) conservée pour
+    # l'export "valeur au survol" — indexée en lat/lon réelles, pas en
+    # espace Mercator (ce qui serait inutile pour retrouver une valeur à
+    # une position GPS donnée).
+    data_native = data.copy()
+
     # =====================================================
     # RÉ-ÉCHANTILLONNAGE EN MERCATOR
     # =====================================================
@@ -181,6 +188,32 @@ def main():
     fig.patch.set_alpha(0)
     fig.savefig(OUTPUT_PNG, transparent=True, dpi=dpi)
     plt.close(fig)
+
+    # =====================================================
+    # GRILLE DE VALEURS (pour affichage "valeur au survol" côté carte,
+    # comme le widget du vent). Sous-échantillonnée pour rester légère —
+    # une lecture approximative suffit pour ce type d'indicateur.
+    # =====================================================
+    MAX_GRID_POINTS = 200
+    stride_lat = max(1, len(lats) // MAX_GRID_POINTS)
+    stride_lon = max(1, len(lons) // MAX_GRID_POINTS)
+    grid_lats = lats[::stride_lat]
+    grid_lons = lons[::stride_lon]
+    grid_vals = data_native[::stride_lat, ::stride_lon]
+
+    def round_or_null(v):
+        return None if (v is None or np.isnan(v)) else round(float(v), 3)
+
+    grid = {
+        "lats": [round(float(v), 4) for v in grid_lats],
+        "lons": [round(float(v), 4) for v in grid_lons],
+        # values[i][j] correspond à lats[i] / lons[j]
+        "values": [[round_or_null(v) for v in row] for row in grid_vals],
+        "unit": "mg/m3",
+    }
+    with open(OUTPUT_GRID, "w") as f:
+        json.dump(grid, f)
+    print(f"  Grille valeurs : {len(grid_lats)} x {len(grid_lons)} points -> {OUTPUT_GRID}")
 
     meta = {
         "west": float(lons.min()),
