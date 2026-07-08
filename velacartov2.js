@@ -44,6 +44,19 @@ window.VelaCarto = {
       + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
       + "&BBOX={bbox-epsg-3857}";
 
+    /* ===================== TEMPÉRATURE DE SURFACE (NASA GIBS) ===================== */
+    // Couche GHRSST L4 MUR (Group for High Resolution SST), résolution ~1km,
+    // composite quotidien global. Même technique WMS que la chlorophylle,
+    // pas de TIME → toujours la donnée la plus récente disponible.
+    const SST_LAYER_NAME = "GHRSST_L4_MUR_Sea_Surface_Temperature";
+    const SST_TILE_URL =
+      "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
+      + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap"
+      + `&LAYERS=${SST_LAYER_NAME}&STYLES=`
+      + "&FORMAT=image/png&TRANSPARENT=TRUE"
+      + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
+      + "&BBOX={bbox-epsg-3857}";
+
     /* ===================== ALLURE FR ===================== */
 
     const ALLURE_FR = {
@@ -569,9 +582,9 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(windWidget);
     }
 
-    /* ---- Sélecteur de fond de carte : Vent / Chlorophylle (exclusif) ---- */
+    /* ---- Sélecteur de fond de carte : Vent / Chlorophylle / Température (exclusif) ---- */
     let baseLayerControl = null;
-    let activeBaseLayer  = "wind"; // "wind" | "chloro"
+    let activeBaseLayer  = "wind"; // "wind" | "chloro" | "sst"
 
     function setBaseLayer(layer) {
       activeBaseLayer = layer;
@@ -583,6 +596,11 @@ window.VelaCarto = {
       try {
         if (map.getLayer("chlorophyll-layer")) {
           map.setLayoutProperty("chlorophyll-layer", "visibility", layer === "chloro" ? "visible" : "none");
+        }
+      } catch(e) { /* layer pas encore prête */ }
+      try {
+        if (map.getLayer("sst-layer")) {
+          map.setLayoutProperty("sst-layer", "visibility", layer === "sst" ? "visible" : "none");
         }
       } catch(e) { /* layer pas encore prête */ }
 
@@ -601,7 +619,7 @@ window.VelaCarto = {
     if (!isMini) {
       baseLayerControl = document.createElement("div");
       Object.assign(baseLayerControl.style, {
-        position: "absolute", top: "12px", right: "12px",
+        position: "absolute", bottom: "64px", right: "12px",
         display: "flex", gap: "4px",
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
         borderRadius: "10px", padding: "4px",
@@ -616,6 +634,9 @@ window.VelaCarto = {
         <button data-layer="chloro" style="border:none;border-radius:7px;padding:6px 12px;
           cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
           transition:background .15s,color .15s,box-shadow .15s;">Chlorophylle</button>
+        <button data-layer="sst" style="border:none;border-radius:7px;padding:6px 12px;
+          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
+          transition:background .15s,color .15s,box-shadow .15s;">Température</button>
       `;
       document.getElementById("map").appendChild(baseLayerControl);
 
@@ -980,6 +1001,21 @@ window.VelaCarto = {
           layout: { visibility: "none" } // masquée par défaut, activable via le bouton
         });
       } catch(e) { console.warn("Couche chlorophylle :", e); }
+
+      /* ---- Température de surface (fond, sous tout le reste) ---- */
+      try {
+        map.addSource("sst-source", {
+          type: "raster",
+          tiles: [SST_TILE_URL],
+          tileSize: 256,
+          attribution: "NASA GIBS / GHRSST"
+        });
+        map.addLayer({
+          id: "sst-layer", type: "raster", source: "sst-source",
+          paint: { "raster-opacity": 0.75 },
+          layout: { visibility: "none" } // masquée par défaut, activable via le bouton
+        });
+      } catch(e) { console.warn("Couche température :", e); }
 
       try {
         if (map.getLayer("Water")) {
