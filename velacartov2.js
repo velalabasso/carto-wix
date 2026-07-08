@@ -47,6 +47,11 @@ window.VelaCarto = {
 
     const ALL_SCIENCE = [...Object.keys(SCIENCE_PT), ...Object.keys(SCIENCE_CT)];
 
+    // Colonne supplémentaire lue dans le CSV, en plus de ALL_SCIENCE :
+    // état brut des stations HYP (ON/OFF), utilisé uniquement comme repli
+    // d'affichage pour les points Hypernet — ne génère pas de layer propre.
+    const EXTRA_COLS = ["station_hyp"];
+
     const sciVis = {};
     ALL_SCIENCE.forEach(k => sciVis[k] = true);
 
@@ -160,6 +165,8 @@ window.VelaCarto = {
       const iAllure = colIdx(hdr, ["allure"]);
       const iSci    = {};
       ALL_SCIENCE.forEach(k => { iSci[k] = colIdx(hdr, [k]); });
+      const iExtra  = {};
+      EXTRA_COLS.forEach(k => { iExtra[k] = colIdx(hdr, [k]); });
 
       const hasHdr    = iLon !== -1 && iLat !== -1 && iTime !== -1;
       const dataLines = hasHdr ? lines.slice(1) : lines;
@@ -186,6 +193,9 @@ window.VelaCarto = {
         if (iAllure !== -1) p.allure = c[iAllure];
         ALL_SCIENCE.forEach(k => {
           if (iSci[k] !== -1) p[k] = String(c[iSci[k]] || "").trim().toUpperCase();
+        });
+        EXTRA_COLS.forEach(k => {
+          if (iExtra[k] !== -1) p[k] = String(c[iExtra[k]] || "").trim().toUpperCase();
         });
         return p;
       }).filter(Boolean).sort((a, b) => a.timestampMs - b.timestampMs);
@@ -273,7 +283,42 @@ window.VelaCarto = {
       return (2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) / 1852;
     }
 
-    /* ===================== HYPERNET : 1 point par mille nautique ===================== */
+    /* ===================== HYPERNET : repli station_hyp ===================== */
+
+    /*
+     * Priorité aux vrais événements "hypernet on/off".
+     * Si, sur une fenêtre contiguë où station_hyp === "ON" (station HYP active),
+     * aucun point n'a hypernet === "ON" (cas où "hypernet on" a été oublié à bord),
+     * alors on considère l'hypernet comme actif sur toute cette fenêtre, bornée par
+     * station_hyp ON / OFF (ou par un éventuel "hypernet off" réel s'il existe
+     * malgré tout à l'intérieur de la fenêtre — il prime alors comme borne de fin).
+     */
+    function computeEffectiveHypernetFlags(slice) {
+      const n = slice.length;
+      const flags = new Array(n);
+      for (let i = 0; i < n; i++) flags[i] = slice[i].hypernet === "ON";
+
+      let segStart = -1;
+      for (let i = 0; i <= n; i++) {
+        const stationOn = i < n && slice[i].station_hyp === "ON";
+        if (stationOn && segStart === -1) segStart = i;
+        if (!stationOn && segStart !== -1) {
+          const segEnd = i - 1;
+
+          let hasRealOn = false;
+          for (let j = segStart; j <= segEnd; j++) {
+            if (slice[j].hypernet === "ON") { hasRealOn = true; break; }
+          }
+          // Aucun "hypernet on" réel dans cette station → repli sur toute
+          // la fenêtre station_hyp ON...OFF (borne de fin = fin de station).
+          if (!hasRealOn) {
+            for (let j = segStart; j <= segEnd; j++) flags[j] = true;
+          }
+          segStart = -1;
+        }
+      }
+      return flags;
+    }
 
     function buildHypernetGeoJSON(slice) {
       const features = [];
@@ -282,8 +327,10 @@ window.VelaCarto = {
       let distSinceLast = 0;
       let lastPt = null;
 
-      slice.forEach(p => {
-        const on = p.hypernet === "ON";
+      const flags = computeEffectiveHypernetFlags(slice);
+
+      slice.forEach((p, idx) => {
+        const on = flags[idx];
         if (on) {
           if (!inSegment) {
             features.push({ type: "Feature", properties: {},
@@ -687,7 +734,8 @@ window.VelaCarto = {
         if (src) src.setData(sciVis[k] ? buildContGeoJSON(slice, k) : EMPTY_FC);
       });
 
-      // Hypernet : points espacés d'1 mille nautique
+      // Hypernet : points espacés d'1 mille nautique, avec repli sur
+      // station_hyp quand "hypernet on/off" n'a pas été loggé.
       const srcH = map.getSource("sci-pt-hypernet");
       if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
