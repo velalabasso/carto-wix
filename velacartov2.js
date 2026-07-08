@@ -24,6 +24,20 @@ window.VelaCarto = {
 
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
+    /* ===================== CHLOROPHYLLE (NASA GIBS) ===================== */
+    // Tuiles satellite quotidiennes MODIS Aqua Chlorophyll-a, publiques,
+    // sans clé API. On prend "hier" en UTC pour être sûr que l'image du
+    // jour soit déjà publiée (délai de publication habituel de GIBS).
+    const CHLORO_DATE = (() => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    })();
+    const CHLORO_LAYER_NAME = "MODIS_Aqua_Chlorophyll_A";
+    const CHLORO_TILE_URL =
+      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${CHLORO_LAYER_NAME}/default/`
+      + `${CHLORO_DATE}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
+
     /* ===================== ALLURE FR ===================== */
 
     const ALLURE_FR = {
@@ -548,6 +562,50 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(windWidget);
     }
 
+    /* ---- Bouton toggle Chlorophylle ---- */
+    let chloroToggle = null;
+    if (!isMini) {
+      chloroToggle = document.createElement("div");
+      Object.assign(chloroToggle.style, {
+        position: "absolute", top: "12px", right: "12px",
+        display: "flex", alignItems: "center", gap: "8px",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "12px", padding: "8px 12px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        zIndex: "800", cursor: "pointer", userSelect: "none",
+        fontFamily: "Helvetica Neue, Arial, sans-serif", fontSize: "12px", color: "#dde6f0"
+      });
+      chloroToggle.innerHTML = `
+        <span>Chlorophylle</span>
+        <div class="vela-pill" data-active="false" style="
+          width:30px;height:16px;border-radius:99px;flex-shrink:0;
+          background:rgba(180,180,180,0.3);
+          position:relative;transition:background .2s,box-shadow .2s;">
+          <div class="vela-knob" style="
+            position:absolute;top:2px;
+            width:12px;height:12px;border-radius:50%;
+            background:white;
+            transform:translateX(1px);
+            transition:transform .2s;
+            box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+        </div>`;
+      document.getElementById("map").appendChild(chloroToggle);
+
+      chloroToggle.addEventListener("click", () => {
+        const pill = chloroToggle.querySelector(".vela-pill");
+        const knob = chloroToggle.querySelector(".vela-knob");
+        const active = pill.dataset.active !== "true";
+        pill.dataset.active = active;
+        pill.style.background = active ? "#2563eb" : "rgba(180,180,180,0.3)";
+        pill.style.boxShadow  = active ? "0 0 6px rgba(37,99,235,0.6)" : "none";
+        knob.style.transform  = active ? "translateX(14px)" : "translateX(1px)";
+        if (map.getLayer("chlorophyll-layer")) {
+          map.setLayoutProperty("chlorophyll-layer", "visibility", active ? "visible" : "none");
+        }
+      });
+    }
+
     map.on("mousemove", e => {
       const vwEl = document.getElementById("vw-value");
       if (!vwEl) return;
@@ -889,6 +947,22 @@ window.VelaCarto = {
     /* ===================== MAP LOAD ===================== */
 
     map.on("load", async () => {
+
+      /* ---- Chlorophylle (fond, sous tout le reste) ---- */
+      try {
+        map.addSource("chlorophyll-source", {
+          type: "raster",
+          tiles: [CHLORO_TILE_URL],
+          tileSize: 256,
+          maxzoom: 7,
+          attribution: "NASA GIBS / MODIS Aqua"
+        });
+        map.addLayer({
+          id: "chlorophyll-layer", type: "raster", source: "chlorophyll-source",
+          paint: { "raster-opacity": 0.75 },
+          layout: { visibility: "none" } // masquée par défaut, activable via le bouton
+        });
+      } catch(e) { console.warn("Couche chlorophylle :", e); }
 
       try {
         if (map.getLayer("Water")) {
