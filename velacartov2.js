@@ -34,6 +34,13 @@ window.VelaCarto = {
     // Les identifiants Copernicus ne transitent jamais côté client : ils
     // restent dans les GitHub Secrets du workflow, seule l'image PNG (et
     // ses bornes géographiques) finit sur le repo, exactement comme les CSV.
+    //
+    // NOTE : ces fichiers vivent dans le repo "carto-wix" (celui du site,
+    // où se trouve déjà ce script et voilier.png) — PAS dans "zopa" (celui
+    // des logs de nav). D'où l'URL builder dédié ci-dessous.
+    const CARTO_REPO_OWNER = "velalabasso";
+    const CARTO_REPO_NAME  = "carto-wix";
+    const CARTO_BRANCH     = "main";
     const CHLORO_IMAGE_PATH = "chlorophyll/chlorophyll_latest.png";
     const CHLORO_META_PATH  = "chlorophyll/chlorophyll_latest.json";
 
@@ -118,9 +125,17 @@ window.VelaCarto = {
         + `?${cacheBuster()}`;
     }
 
+    // Même principe que githubRawUrl, mais pour le repo "carto-wix" (site),
+    // où vit la chlorophylle générée par GitHub Actions.
+    function cartoRawUrl(path) {
+      return `https://raw.githubusercontent.com/${CARTO_REPO_OWNER}/${CARTO_REPO_NAME}/${CARTO_BRANCH}/`
+        + path.split("/").map(encodeURIComponent).join("/")
+        + `?${cacheBuster()}`;
+    }
+
     /* ---- Chlorophylle : charge/rafraîchit l'image + ses bornes géo ---- */
     async function loadChlorophyllImage() {
-      const meta = await fetchJSON(githubRawUrl(CHLORO_META_PATH));
+      const meta = await fetchJSON(cartoRawUrl(CHLORO_META_PATH));
       if (!meta || !isFinite(meta.west) || !isFinite(meta.east)
           || !isFinite(meta.south) || !isFinite(meta.north)) {
         console.warn("Chlorophylle : bornes géographiques indisponibles.");
@@ -130,7 +145,7 @@ window.VelaCarto = {
         [meta.west, meta.north], [meta.east, meta.north],
         [meta.east, meta.south], [meta.west, meta.south]
       ];
-      const imageUrl = githubRawUrl(CHLORO_IMAGE_PATH);
+      const imageUrl = cartoRawUrl(CHLORO_IMAGE_PATH);
 
       const src = map.getSource("chlorophyll-source");
       if (src) {
