@@ -167,7 +167,22 @@ def main():
     data = data_merc
 
     norm = mcolors.LogNorm(vmin=VMIN, vmax=VMAX, clip=True)
-    cmap = plt.get_cmap("viridis").copy()
+    # Reconstruction de la palette "ocean color" NASA/SeaWiFS (violet foncé
+    # -> bleu -> cyan -> vert -> jaune -> orange -> rouge), cohérente avec
+    # la colorbar affichée dans vela-carto.js. Approximative — pas extraite
+    # pixel-perfect du XML de légende officiel NASA (non accessible).
+    # Stops positionnés sur les mêmes seuils que la légende NASA
+    # (0.01 / 0.03 / 0.1 / 0.3 / 1 / 3 / 10 mg/m3).
+    _nasa_chl_stops = [0.01, 0.03, 0.1, 0.3, 1, 3, 10]
+    _nasa_chl_colors = [
+        "#2b0f6b", "#1f4fd6", "#14a8d6", "#16b866",
+        "#a9d616", "#f2a71a", "#d21f1f",
+    ]
+    _lo, _hi = np.log10(VMIN), np.log10(VMAX)
+    _positions = [(np.log10(v) - _lo) / (_hi - _lo) for v in _nasa_chl_stops]
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        "nasa_chl", list(zip(_positions, _nasa_chl_colors))
+    )
     cmap.set_bad(alpha=0)  # NaN (terre, pas de donnée) -> transparent
 
     height_px = data.shape[0]
