@@ -791,6 +791,29 @@ window.VelaCarto = {
     let chloroColorbar    = null;
     let sstColorbar       = null;
     let activeBaseLayer   = "wind"; // "wind" | "chloro" | "sst"
+    let blcCollapsed      = false; // état replié du sélecteur "Fond de carte"
+
+    // Affiche/masque widgets + colorbars selon la couche active ET l'état
+    // (replié ou non) du sélecteur — repli du sélecteur = colorbar masquée,
+    // même si une couche non-vent est active.
+    function applyLayerVisuals(layer) {
+      const showExtras = !blcCollapsed;
+      if (windWidget)     windWidget.style.display     = layer === "wind"   ? "flex"  : "none";
+      if (chloroWidget)   chloroWidget.style.display    = layer === "chloro" ? "flex"  : "none";
+      if (chloroColorbar) chloroColorbar.style.display  = (layer === "chloro" && showExtras) ? "block" : "none";
+      if (sstWidget)       sstWidget.style.display       = layer === "sst"    ? "flex"  : "none";
+      if (sstColorbar)     sstColorbar.style.display     = (layer === "sst" && showExtras) ? "block" : "none";
+
+      if (baseLayerControl) {
+        baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
+          const isActive = btn.dataset.layer === layer;
+          btn.style.background   = isActive ? "#2563eb" : "transparent";
+          btn.style.color        = isActive ? "white" : "#dde6f0";
+          btn.style.boxShadow    = isActive ? "0 0 6px rgba(37,99,235,0.6)" : "none";
+          btn.style.borderColor  = isActive ? "#2563eb" : "rgba(255,255,255,0.35)";
+        });
+      }
+    }
 
     function setBaseLayer(layer) {
       activeBaseLayer = layer;
@@ -810,20 +833,7 @@ window.VelaCarto = {
         }
       } catch(e) { /* layer pas encore prête */ }
 
-      if (windWidget)     windWidget.style.display     = layer === "wind"   ? "flex"  : "none";
-      if (chloroWidget)   chloroWidget.style.display    = layer === "chloro" ? "flex"  : "none";
-      if (chloroColorbar) chloroColorbar.style.display  = layer === "chloro" ? "block" : "none";
-      if (sstWidget)       sstWidget.style.display       = layer === "sst"    ? "flex"  : "none";
-      if (sstColorbar)     sstColorbar.style.display     = layer === "sst"    ? "block" : "none";
-
-      if (baseLayerControl) {
-        baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
-          const isActive = btn.dataset.layer === layer;
-          btn.style.background = isActive ? "#2563eb" : "transparent";
-          btn.style.color      = isActive ? "white" : "#dde6f0";
-          btn.style.boxShadow  = isActive ? "0 0 6px rgba(37,99,235,0.6)" : "none";
-        });
-      }
+      applyLayerVisuals(layer);
     }
 
     if (!isMini) {
@@ -845,18 +855,18 @@ window.VelaCarto = {
             style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="blc-body" style="display:flex;gap:4px;">
-          <button data-layer="wind" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+          <button data-layer="wind" style="flex:1;min-width:0;border:1px solid rgba(255,255,255,0.35);border-radius:7px;padding:6px 2px;
             cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-            transition:background .15s,color .15s,box-shadow .15s;">Vent</button>
-          <button data-layer="chloro" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+            transition:background .15s,color .15s,box-shadow .15s,border-color .15s;">Vent</button>
+          <button data-layer="chloro" style="flex:1;min-width:0;border:1px solid rgba(255,255,255,0.35);border-radius:7px;padding:6px 2px;
             cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-            transition:background .15s,color .15s,box-shadow .15s;">Chlorophylle</button>
-          <button data-layer="sst" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+            transition:background .15s,color .15s,box-shadow .15s,border-color .15s;">Chlorophylle</button>
+          <button data-layer="sst" style="flex:1;min-width:0;border:1px solid rgba(255,255,255,0.35);border-radius:7px;padding:6px 2px;
             cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-            transition:background .15s,color .15s,box-shadow .15s;">Température</button>
+            transition:background .15s,color .15s,box-shadow .15s,border-color .15s;">Température</button>
         </div>
       `;
       document.getElementById("map").appendChild(baseLayerControl);
@@ -868,11 +878,14 @@ window.VelaCarto = {
       if (isMobile) {
         blcBody.style.display  = "none";
         blcIcon.style.transform = "rotate(-90deg)";
+        blcCollapsed = true;
       }
       blcHeader.addEventListener("click", () => {
         const collapsed = blcBody.style.display === "none";
         blcBody.style.display  = collapsed ? "flex" : "none";
         blcIcon.style.transform = collapsed ? "rotate(0deg)" : "rotate(-90deg)";
+        blcCollapsed = !collapsed;
+        applyLayerVisuals(activeBaseLayer); // masque/réaffiche la colorbar en conséquence
       });
 
       baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
