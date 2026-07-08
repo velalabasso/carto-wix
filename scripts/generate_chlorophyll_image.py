@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 Génère une image PNG de chlorophylle de surface à partir de Copernicus
@@ -117,18 +116,52 @@ def main():
 
     lat_name = "latitude" if "latitude" in da.coords else "lat"
     lon_name = "longitude" if "longitude" in da.coords else "lon"
+
+    # On force l'ordre croissant (sud -> nord, ouest -> est) plutôt que de
+    # deviner l'orientation native du fichier : ça élimine toute ambiguïté
+    # de flip nord/sud à l'affichage, quelle que soit la convention du
+    # dataset source.
+    da = da.sortby(lat_name).sortby(lon_name)
+
     lats = da[lat_name].values
     lons = da[lon_name].values
     data = np.asarray(da.values, dtype="float64")
+    print(f"  Lat : {lats.min():.3f} -> {lats.max():.3f} (croissant, {len(lats)} pts)")
+    print(f"  Lon : {lons.min():.3f} -> {lons.max():.3f} (croissant, {len(lons)} pts)")
 
     # Écrase les valeurs <= 0 (invalides pour une échelle log) en NaN
     data = np.where(data > 0, data, np.nan)
 
+    # =====================================================
+    # RÉ-ÉCHANTILLONNAGE EN MERCATOR
+    # =====================================================
+    # MapLibre ImageSource étire l'image entre 4 coins en projection Web
+    # Mercator. Notre grille source est uniforme en degrés de latitude
+    # ("plate carrée"), alors qu'en Mercator l'espacement vertical entre
+    # deux mêmes degrés de latitude augmente avec la distance à l'équateur.
+    # Sans correction, l'image se désaligne progressivement en s'éloignant
+    # de l'équateur (nul à l'équateur, croissant vers les pôles) — c'est
+    # exactement le décalage observé. On corrige en ré-échantillonnant
+    # l'axe latitude pour qu'il soit uniforme en Y-Mercator plutôt qu'en
+    # degrés, colonne par colonne (interpolation linéaire).
+    def lat_to_merc_y(lat_deg):
+        lat_rad = np.radians(np.clip(lat_deg, -85.05112878, 85.05112878))
+        return np.log(np.tan(np.pi / 4 + lat_rad / 2))
+
+    merc_y_src     = lat_to_merc_y(lats)                      # croissant (lats croissant)
+    merc_y_uniform = np.linspace(merc_y_src[0], merc_y_src[-1], len(lats))
+
+    data_merc = np.empty_like(data)
+    for j in range(data.shape[1]):
+        data_merc[:, j] = np.interp(
+            merc_y_uniform, merc_y_src, data[:, j],
+            left=np.nan, right=np.nan
+        )
+    data = data_merc
+
     norm = mcolors.LogNorm(vmin=VMIN, vmax=VMAX, clip=True)
     cmap = plt.get_cmap("viridis").copy()
     cmap.set_bad(alpha=0)  # NaN (terre, pas de donnée) -> transparent
-
-    lat_ascending = lats[0] < lats[-1]
 
     height_px = data.shape[0]
     width_px  = data.shape[1]
@@ -136,9 +169,13 @@ def main():
     fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_axis_off()
+    # origin="lower" : la ligne 0 du tableau (lat la plus petite, donc sud,
+    # puisqu'on a trié en croissant juste au-dessus) est peinte en bas de
+    # l'image — cohérent avec des coordonnées [west,north]/[east,south]
+    # passées à MapLibre ImageSource.
     ax.imshow(
         data, cmap=cmap, norm=norm,
-        origin="lower" if lat_ascending else "upper",
+        origin="lower",
         aspect="auto",
     )
     fig.patch.set_alpha(0)
