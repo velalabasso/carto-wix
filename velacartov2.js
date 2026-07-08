@@ -576,17 +576,31 @@ window.VelaCarto = {
         color: "#dde6f0", fontFamily: "Helvetica Neue, Arial, sans-serif",
         fontSize: "13px", lineHeight: "1.8", padding: "10px 16px",
         borderRadius: "10px", boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
-        minWidth: "148px", pointerEvents: "none", display: "none"
+        minWidth: "148px", pointerEvents: "auto", display: "none"
       });
       navPanel.innerHTML = `
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:5px;">Navigation</div>
+        <div id="vn-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;user-select:none;margin-bottom:5px;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;">Navigation</span>
+          <svg id="vn-toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c8dcea" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="vn-body">
         <div><span style="color:#c8dcea">Date</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
         <div><span style="color:#c8dcea">Temps</span>&nbsp;<strong id="vn-elapsed">—</strong></div>
         <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
         <div><span style="color:#c8dcea">Vent</span>&nbsp;&nbsp;<strong id="vn-tws">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
+        </div>
         `;
       bottomLeftContainer.appendChild(navPanel);
+
+      const vnHeader = navPanel.querySelector("#vn-header");
+      const vnBody   = navPanel.querySelector("#vn-body");
+      const vnIcon   = navPanel.querySelector("#vn-toggle-icon");
+      vnHeader.addEventListener("click", () => {
+        const collapsed = vnBody.style.display === "none";
+        vnBody.style.display   = collapsed ? "" : "none";
+        vnIcon.style.transform = collapsed ? "rotate(0deg)" : "rotate(-90deg)";
+      });
     }
 
     function formatElapsed(ms) {
@@ -651,7 +665,12 @@ window.VelaCarto = {
         minWidth: "218px"
       });
 
-      let html = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:8px;">Science</div>`;
+      let html = `
+        <div id="sci-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;user-select:none;margin-bottom:8px;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;">Science</span>
+          <svg id="sci-toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c8dcea" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="sci-body">`;
       sciRows.forEach((row, ri) => {
         let swatch;
         if (row.type === "dot") {
@@ -682,8 +701,18 @@ window.VelaCarto = {
             ${swatch}<span style="font-size:12px;">${row.label}</span>
           </div>`;
       });
+      html += `</div>`;
       sciPanel.innerHTML = html;
       bottomLeftContainer.appendChild(sciPanel);
+
+      const sciHeader = sciPanel.querySelector("#sci-header");
+      const sciBody   = sciPanel.querySelector("#sci-body");
+      const sciIcon   = sciPanel.querySelector("#sci-toggle-icon");
+      sciHeader.addEventListener("click", () => {
+        const collapsed = sciBody.style.display === "none";
+        sciBody.style.display  = collapsed ? "" : "none";
+        sciIcon.style.transform = collapsed ? "rotate(0deg)" : "rotate(-90deg)";
+      });
 
       sciPanel.querySelectorAll("[data-ri]").forEach(row => {
         const pill = row.querySelector(".vela-pill");
