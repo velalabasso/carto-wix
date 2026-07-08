@@ -6,6 +6,9 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch: {}   # permet aussi un déclenchement manuel depuis l'onglet Actions
 
+permissions:
+  contents: write   # nécessaire pour que le job puisse "git push" son commit
+
 jobs:
   update-chlorophyll:
     runs-on: ubuntu-latest
