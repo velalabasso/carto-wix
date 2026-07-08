@@ -24,25 +24,18 @@ window.VelaCarto = {
 
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
-    /* ===================== CHLOROPHYLLE (NASA GIBS) ===================== */
-    // Couche satellite Chlorophylle-a (Aqua/MODIS), publique, sans clé API.
-    // Pas de paramètre TIME dans la requête : GIBS sert automatiquement la
-    // donnée la plus récente disponible ("best"/"default") — comme le vent,
-    // pas de navigation dans le temps possible.
-    // NOTE : "MODIS_Aqua_Chlorophyll_A" est un identifiant retiré par la NASA
-    // en mars 2022 ; le remplaçant actif est "MODIS_Aqua_L2_Chlorophyll_A".
-    // On passe par le WMS de GIBS (GetMap + {bbox-epsg-3857}) plutôt que par
-    // le WMTS : cela évite de devoir connaître le "TileMatrixSet" exact du
-    // layer (non documenté publiquement), MapLibre calculant lui-même la
-    // bbox de chaque tuile.
-    const CHLORO_LAYER_NAME = "MODIS_Aqua_L2_Chlorophyll_A";
-    const CHLORO_TILE_URL =
-      "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
-      + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap"
-      + `&LAYERS=${CHLORO_LAYER_NAME}&STYLES=`
-      + "&FORMAT=image/png&TRANSPARENT=TRUE"
-      + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
-      + "&BBOX={bbox-epsg-3857}";
+    /* ===================== CHLOROPHYLLE (Copernicus Marine, via GitHub Actions) ===================== */
+    // Image statique "gap-free" (interpolée, sans trous liés aux nuages),
+    // générée quotidiennement par un workflow GitHub Actions à partir du
+    // dataset Copernicus Marine "cmems_obs-oc_glo_bgc-plankton_nrt_l4-
+    // gapfree-multi-4km_P1D" (voir scripts/generate_chlorophyll_image.py).
+    // Contrairement au layer NASA GIBS L2 utilisé avant (passage satellite
+    // brut, trous de nuages), ce produit est déjà lissé par Copernicus.
+    // Les identifiants Copernicus ne transitent jamais côté client : ils
+    // restent dans les GitHub Secrets du workflow, seule l'image PNG (et
+    // ses bornes géographiques) finit sur le repo, exactement comme les CSV.
+    const CHLORO_IMAGE_PATH = "chlorophyll/chlorophyll_latest.png";
+    const CHLORO_META_PATH  = "chlorophyll/chlorophyll_latest.json";
 
     /* ===================== TEMPÉRATURE DE SURFACE (NASA GIBS) ===================== */
     // Couche GHRSST L4 MUR (Group for High Resolution SST), résolution ~1km,
@@ -123,6 +116,33 @@ window.VelaCarto = {
       return `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/`
         + path.split("/").map(encodeURIComponent).join("/")
         + `?${cacheBuster()}`;
+    }
+
+    /* ---- Chlorophylle : charge/rafraîchit l'image + ses bornes géo ---- */
+    async function loadChlorophyllImage() {
+      const meta = await fetchJSON(githubRawUrl(CHLORO_META_PATH));
+      if (!meta || !isFinite(meta.west) || !isFinite(meta.east)
+          || !isFinite(meta.south) || !isFinite(meta.north)) {
+        console.warn("Chlorophylle : bornes géographiques indisponibles.");
+        return;
+      }
+      const coordinates = [
+        [meta.west, meta.north], [meta.east, meta.north],
+        [meta.east, meta.south], [meta.west, meta.south]
+      ];
+      const imageUrl = githubRawUrl(CHLORO_IMAGE_PATH);
+
+      const src = map.getSource("chlorophyll-source");
+      if (src) {
+        src.updateImage({ url: imageUrl, coordinates });
+      } else {
+        map.addSource("chlorophyll-source", { type: "image", url: imageUrl, coordinates });
+        map.addLayer({
+          id: "chlorophyll-layer", type: "raster", source: "chlorophyll-source",
+          paint: { "raster-opacity": 0.75 },
+          layout: { visibility: activeBaseLayer === "chloro" ? "visible" : "none" }
+        });
+      }
     }
 
     async function fetchText(url) {
@@ -980,6 +1000,8 @@ window.VelaCarto = {
       renderAll();
       updateBoatUI();
 
+      try { await loadChlorophyllImage(); } catch(e) { console.warn("Refresh chlorophylle :", e); }
+
       window.dispatchEvent(new Event("velacarto:pointsready"));
     }
 
@@ -987,19 +1009,9 @@ window.VelaCarto = {
 
     map.on("load", async () => {
 
-      /* ---- Chlorophylle (fond, sous tout le reste) ---- */
+      /* ---- Chlorophylle (fond, sous tout le reste) — image statique Copernicus ---- */
       try {
-        map.addSource("chlorophyll-source", {
-          type: "raster",
-          tiles: [CHLORO_TILE_URL],
-          tileSize: 256,
-          attribution: "NASA GIBS / MODIS Aqua"
-        });
-        map.addLayer({
-          id: "chlorophyll-layer", type: "raster", source: "chlorophyll-source",
-          paint: { "raster-opacity": 0.75 },
-          layout: { visibility: "none" } // masquée par défaut, activable via le bouton
-        });
+        await loadChlorophyllImage();
       } catch(e) { console.warn("Couche chlorophylle :", e); }
 
       /* ---- Température de surface (fond, sous tout le reste) ---- */
@@ -1016,6 +1028,7 @@ window.VelaCarto = {
           layout: { visibility: "none" } // masquée par défaut, activable via le bouton
         });
       } catch(e) { console.warn("Couche température :", e); }
+
 
       try {
         if (map.getLayer("Water")) {
