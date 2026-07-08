@@ -1,0 +1,9 @@
+{
+  "west": -74.97916412353516,
+  "east": 19.979171752929688,
+  "south": -4.9791693687438965,
+  "north": 49.979164123535156,
+  "generated_at": "2026-07-08T09:44:25.997067+00:00",
+  "data_time": "2026-07-06T00:00:00.000000000",
+  "dataset_id": "cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D"
+}
