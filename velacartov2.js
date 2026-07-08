@@ -43,6 +43,11 @@ window.VelaCarto = {
     const CARTO_BRANCH     = "main";
     const CHLORO_IMAGE_PATH = "chlorophyll/chlorophyll_latest.png";
     const CHLORO_META_PATH  = "chlorophyll/chlorophyll_latest.json";
+    const CHLORO_GRID_PATH  = "chlorophyll/chlorophyll_latest_grid.json";
+    // Bornes de l'échelle de couleur — doivent rester cohérentes avec
+    // VMIN/VMAX dans scripts/generate_chlorophyll_image.py.
+    const CHLORO_VMIN = 0.01;
+    const CHLORO_VMAX = 10.0;
 
     /* ===================== TEMPÉRATURE DE SURFACE (NASA GIBS) ===================== */
     // Couche GHRSST L4 MUR (Group for High Resolution SST), résolution ~1km,
@@ -158,6 +163,42 @@ window.VelaCarto = {
           layout: { visibility: activeBaseLayer === "chloro" ? "visible" : "none" }
         });
       }
+    }
+
+    /* ---- Grille de valeurs chlorophylle (lecture au survol) ---- */
+    let chloroGrid = null; // { lats:[...] croissant, lons:[...] croissant, values:[[...]], unit }
+
+    async function loadChlorophyllGrid() {
+      const grid = await fetchJSON(cartoRawUrl(CHLORO_GRID_PATH));
+      if (!grid || !Array.isArray(grid.lats) || !Array.isArray(grid.lons) || !Array.isArray(grid.values)) {
+        console.warn("Chlorophylle : grille de valeurs indisponible.");
+        return;
+      }
+      chloroGrid = grid;
+    }
+
+    // Recherche l'indice du plus proche voisin dans un tableau croissant.
+    function nearestIdx(arr, v) {
+      let lo = 0, hi = arr.length - 1;
+      if (v <= arr[0]) return 0;
+      if (v >= arr[hi]) return hi;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (arr[mid] < v) lo = mid + 1; else hi = mid;
+      }
+      const i = lo;
+      if (i > 0 && Math.abs(arr[i - 1] - v) <= Math.abs(arr[i] - v)) return i - 1;
+      return i;
+    }
+
+    function chlorophyllValueAt(lng, lat) {
+      if (!chloroGrid) return null;
+      const iLat = nearestIdx(chloroGrid.lats, lat);
+      const iLon = nearestIdx(chloroGrid.lons, lng);
+      const row = chloroGrid.values[iLat];
+      if (!row) return null;
+      const v = row[iLon];
+      return (v === null || v === undefined) ? null : v;
     }
 
     async function fetchText(url) {
@@ -617,9 +658,33 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(windWidget);
     }
 
+    /* ---- Widget Chlorophylle (même coin que le vent, un seul visible à la fois) ---- */
+    let chloroWidget = null;
+    if (!isMini) {
+      chloroWidget = document.createElement("div");
+      Object.assign(chloroWidget.style, {
+        position: "absolute", top: "12px", left: "12px",
+        display: "none", flexDirection: "column",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "12px", padding: "6px 12px 8px 12px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        minWidth: "70px", zIndex: "800", pointerEvents: "none"
+      });
+      chloroWidget.innerHTML = `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+          color:#c8dcea;font-family:Helvetica Neue,Arial,sans-serif;
+          font-weight:500;margin-bottom:2px;">Chlorophylle</div>
+        <div id="chloro-value" style="font-size:16px;font-weight:700;color:white;
+          font-family:Helvetica Neue,Arial,sans-serif;letter-spacing:-.01em;
+          line-height:1.2;text-shadow:0 1px 6px rgba(0,0,0,0.4);">— mg/m³</div>`;
+      document.getElementById("map").appendChild(chloroWidget);
+    }
+
     /* ---- Sélecteur de fond de carte : Vent / Chlorophylle / Température (exclusif) ---- */
-    let baseLayerControl = null;
-    let activeBaseLayer  = "wind"; // "wind" | "chloro" | "sst"
+    let baseLayerControl  = null;
+    let chloroColorbar    = null;
+    let activeBaseLayer   = "wind"; // "wind" | "chloro" | "sst"
 
     function setBaseLayer(layer) {
       activeBaseLayer = layer;
@@ -639,7 +704,9 @@ window.VelaCarto = {
         }
       } catch(e) { /* layer pas encore prête */ }
 
-      if (windWidget) windWidget.style.display = layer === "wind" ? "flex" : "none";
+      if (windWidget)     windWidget.style.display     = layer === "wind"   ? "flex"  : "none";
+      if (chloroWidget)   chloroWidget.style.display    = layer === "chloro" ? "flex"  : "none";
+      if (chloroColorbar) chloroColorbar.style.display  = layer === "chloro" ? "block" : "none";
 
       if (baseLayerControl) {
         baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
@@ -679,6 +746,57 @@ window.VelaCarto = {
         btn.addEventListener("click", () => setBaseLayer(btn.dataset.layer));
       });
     }
+
+    /* ---- Colorbar Chlorophylle (bas de carte, centrée, échelle log) ---- */
+    if (!isMini) {
+      // Position en % le long du dégradé pour une valeur donnée (échelle log)
+      const chloroPct = v => {
+        const lo = Math.log10(CHLORO_VMIN), hi = Math.log10(CHLORO_VMAX);
+        return Math.max(0, Math.min(100, (Math.log10(v) - lo) / (hi - lo) * 100));
+      };
+      const ticks = [0.01, 0.1, 1, 10].filter(v => v >= CHLORO_VMIN && v <= CHLORO_VMAX);
+
+      chloroColorbar = document.createElement("div");
+      Object.assign(chloroColorbar.style, {
+        position: "absolute", bottom: "64px", left: "50%", transform: "translateX(-50%)",
+        display: "none",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "10px", padding: "8px 14px 6px 14px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        zIndex: "800", width: "240px",
+        fontFamily: "Helvetica Neue, Arial, sans-serif", color: "#dde6f0"
+      });
+
+      const gradientCss = "linear-gradient(to right, #440154, #414487, #2a788e, #22a884, #7ad151, #fde725)";
+      const ticksHtml = ticks.map(v => `
+        <span style="position:absolute;left:${chloroPct(v)}%;transform:translateX(-50%);white-space:nowrap;">${v}</span>
+      `).join("");
+
+      chloroColorbar.innerHTML = `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:6px;text-align:center;">
+          Chlorophylle-a (mg/m&sup3;)
+        </div>
+        <div style="height:10px;border-radius:4px;background:${gradientCss};margin-bottom:4px;"></div>
+        <div style="position:relative;height:14px;font-size:10px;">${ticksHtml}</div>
+      `;
+      document.getElementById("map").appendChild(chloroColorbar);
+    }
+
+    /* ---- Chlorophylle : valeur au survol (widget) ---- */
+    map.on("mousemove", e => {
+      const cvEl = document.getElementById("chloro-value");
+      if (!cvEl) return;
+      if (activeBaseLayer !== "chloro") { cvEl.innerText = "— mg/m³"; return; }
+      const v = chlorophyllValueAt(e.lngLat.lng, e.lngLat.lat);
+      cvEl.innerText = (v === null) ? "— mg/m³" : `${v.toFixed(3)} mg/m³`;
+    });
+    map.on("mouseout", () => {
+      const cvEl = document.getElementById("chloro-value");
+      if (cvEl) cvEl.innerText = "— mg/m³";
+    });
+
+
 
     map.on("mousemove", e => {
       const vwEl = document.getElementById("vw-value");
@@ -1015,7 +1133,10 @@ window.VelaCarto = {
       renderAll();
       updateBoatUI();
 
-      try { await loadChlorophyllImage(); } catch(e) { console.warn("Refresh chlorophylle :", e); }
+      try {
+        await loadChlorophyllImage();
+        await loadChlorophyllGrid();
+      } catch(e) { console.warn("Refresh chlorophylle :", e); }
 
       window.dispatchEvent(new Event("velacarto:pointsready"));
     }
@@ -1027,6 +1148,7 @@ window.VelaCarto = {
       /* ---- Chlorophylle (fond, sous tout le reste) — image statique Copernicus ---- */
       try {
         await loadChlorophyllImage();
+        await loadChlorophyllGrid();
       } catch(e) { console.warn("Couche chlorophylle :", e); }
 
       /* ---- Température de surface (fond, sous tout le reste) ---- */
