@@ -771,7 +771,10 @@ window.VelaCarto = {
       // Reconstruction de la palette "ocean color" NASA/SeaWiFS (violet
       // foncé -> bleu -> cyan -> vert -> jaune -> orange -> rouge),
       // approximative (pas extraite pixel-perfect du XML officiel).
-      const gradientCss = "linear-gradient(to right, #2b0f6b, #1f4fd6, #14a8d6, #16b866, #a9d616, #f2a71a, #d21f1f)";
+      // 12 stops échantillonnés uniformément dans la palette NASA/SeaWiFS
+      // exacte à 230 couleurs (même source que NASA_CHL_COLORS dans
+      // generate_chlorophyll_image.py) — cohérent avec l'image affichée.
+      const gradientCss = "linear-gradient(to right, #90006F, #5100AE, #1200ED, #004AFF, #00BAFF, #00FFBF, #00FF17, #98FF00, #FFDF00, #FF8F00, #FF3B00, #E10000)";
       const ticksHtml = ticks.map((v, i) => {
         const pct = chloroPct(v);
         const tx  = i === 0 ? "0%" : (i === ticks.length - 1 ? "-100%" : "-50%");
