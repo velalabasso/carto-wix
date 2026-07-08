@@ -142,6 +142,17 @@ window.VelaCarto = {
     }
 
     /* ---- Chlorophylle : charge/rafraîchit l'image + ses bornes géo ---- */
+    // Formate une date ISO en DD/MM/YYYY (fuseau UTC, cohérent avec le
+    // reste de la carto qui affiche tout en UTC).
+    function formatDateFR(isoString) {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return "—";
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const yyyy = d.getUTCFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+
     async function loadChlorophyllImage() {
       const meta = await fetchJSON(cartoRawUrl(CHLORO_META_PATH));
       if (!meta || !isFinite(meta.west) || !isFinite(meta.east)
@@ -154,6 +165,12 @@ window.VelaCarto = {
         [meta.east, meta.south], [meta.west, meta.south]
       ];
       const imageUrl = cartoRawUrl(CHLORO_IMAGE_PATH);
+
+      const productEl = document.getElementById("chloro-product");
+      if (productEl) {
+        const dateStr = formatDateFR(meta.generated_at);
+        productEl.innerText = `${dateStr} — ${CHLORO_PRODUCT_NAME}`;
+      }
 
       const src = map.getSource("chlorophyll-source");
       if (src) {
@@ -767,7 +784,7 @@ window.VelaCarto = {
         borderRadius: "10px", padding: "8px 14px 6px 14px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
         border: "1px solid rgba(255,255,255,0.12)",
-        zIndex: "800", width: "300px",
+        zIndex: "800", width: "320px",
         fontFamily: "Helvetica Neue, Arial, sans-serif", color: "#dde6f0"
       });
 
@@ -790,8 +807,9 @@ window.VelaCarto = {
         </div>
         <div style="height:10px;border-radius:4px;background:${gradientCss};margin-bottom:4px;"></div>
         <div style="position:relative;height:14px;font-size:10px;">${ticksHtml}</div>
-        <div style="margin-top:8px;font-size:9px;color:#c8dcea;text-align:center;opacity:0.85;">
-          Copernicus Marine — ${CHLORO_PRODUCT_NAME}
+        <div id="chloro-product" style="margin-top:8px;font-size:8.5px;color:#c8dcea;text-align:center;
+          opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          — mise à jour — ${CHLORO_PRODUCT_NAME}
         </div>
       `;
       document.getElementById("map").appendChild(chloroColorbar);
