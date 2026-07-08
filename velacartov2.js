@@ -3,6 +3,12 @@ window.VelaCarto = {
     const mode   = options.mode || "full";
     const isMini = mode === "mini";
 
+    // Détection mobile (viewport étroit) — utilisée pour masquer les
+    // panneaux Navigation et Science sur téléphone, indépendamment du mode.
+    const isMobile = window.matchMedia
+      ? window.matchMedia("(max-width: 768px)").matches
+      : window.innerWidth <= 768;
+
     maptilersdk.config.apiKey = "OGxkSige7vgEEaQoKmhu";
 
     /* ===================== CONFIG ===================== */
@@ -554,7 +560,7 @@ window.VelaCarto = {
     });
 
     let bottomLeftContainer = null;
-    if (!isMini) {
+    if (!isMini && !isMobile) {
       bottomLeftContainer = document.createElement("div");
       Object.assign(bottomLeftContainer.style, {
         position: "absolute", bottom: "52px", left: "12px",
@@ -569,7 +575,7 @@ window.VelaCarto = {
     let departureMs = DEPARTURE_MS;
 
     let navPanel = null;
-    if (!isMini) {
+    if (!isMini && !isMobile) {
       navPanel = document.createElement("div");
       Object.assign(navPanel.style, {
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
@@ -655,7 +661,7 @@ window.VelaCarto = {
     ];
 
     let sciPanel = null;
-    if (!isMini) {
+    if (!isMini && !isMobile) {
       sciPanel = document.createElement("div");
       Object.assign(sciPanel.style, {
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
