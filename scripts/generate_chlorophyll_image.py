@@ -52,6 +52,38 @@ MIN_LAT, MAX_LAT = -5.0, 50.0
 # ordres de grandeur entre eaux oligotrophes et zones côtières riches.
 VMIN, VMAX = 0.01, 10.0
 
+# Palette "ocean color" NASA/SeaWiFS EXACTE (230 couleurs), extraite de la
+# fonction chl_pal() du package R "palr" (AustralianAntarcticDivision/palr,
+# R/palr.R), elle-même dérivée du fichier NASA original
+# 'http://oceancolor.gsfc.nasa.gov/DOCS/palette_chl_etc.txt'.
+# Couleurs uniformément espacées en échelle log sur [VMIN, VMAX] = [0.01, 10].
+NASA_CHL_COLORS = [
+    "#90006F", "#8D0072", "#8A0075", "#870078", "#84007B", "#81007E", "#7E0081", "#7B0084", "#780087", "#75008A",
+    "#72008D", "#6F0090", "#6C0093", "#690096", "#660099", "#63009C", "#60009F", "#5D00A2", "#5A00A5", "#5700A8",
+    "#5400AB", "#5100AE", "#4E00B1", "#4B00B4", "#4800B7", "#4500BA", "#4200BD", "#3F00C0", "#3C00C3", "#3900C6",
+    "#3600C9", "#3300CC", "#3000CF", "#2D00D2", "#2A00D5", "#2700D8", "#2400DB", "#2100DE", "#1E00E1", "#1B00E4",
+    "#1800E7", "#1500EA", "#1200ED", "#0F00F0", "#0C00F3", "#0900F6", "#0600F9", "#0000FC", "#0000FF", "#0005FF",
+    "#000AFF", "#0010FF", "#0015FF", "#001AFF", "#0020FF", "#0025FF", "#002AFF", "#0030FF", "#0035FF", "#003AFF",
+    "#0040FF", "#0045FF", "#004AFF", "#0050FF", "#0055FF", "#005AFF", "#0060FF", "#0065FF", "#006AFF", "#0070FF",
+    "#0075FF", "#007AFF", "#0080FF", "#0085FF", "#008AFF", "#0090FF", "#0095FF", "#009AFF", "#00A0FF", "#00A5FF",
+    "#00AAFF", "#00B0FF", "#00B5FF", "#00BAFF", "#00C0FF", "#00C5FF", "#00CAFF", "#00D0FF", "#00D5FF", "#00DAFF",
+    "#00E0FF", "#00E5FF", "#00EAFF", "#00F0FF", "#00F5FF", "#00FAFF", "#00FFFF", "#00FFF7", "#00FFEF", "#00FFE7",
+    "#00FFDF", "#00FFD7", "#00FFCF", "#00FFC7", "#00FFBF", "#00FFB7", "#00FFAF", "#00FFA7", "#00FF9F", "#00FF97",
+    "#00FF8F", "#00FF87", "#00FF7F", "#00FF77", "#00FF6F", "#00FF67", "#00FF5F", "#00FF57", "#00FF4F", "#00FF47",
+    "#00FF3F", "#00FF37", "#00FF2F", "#00FF27", "#00FF1F", "#00FF17", "#00FF0F", "#00FF00", "#08FF00", "#10FF00",
+    "#18FF00", "#20FF00", "#28FF00", "#30FF00", "#38FF00", "#40FF00", "#48FF00", "#50FF00", "#58FF00", "#60FF00",
+    "#68FF00", "#70FF00", "#78FF00", "#80FF00", "#88FF00", "#90FF00", "#98FF00", "#A0FF00", "#A8FF00", "#B0FF00",
+    "#B8FF00", "#C0FF00", "#C8FF00", "#D0FF00", "#D8FF00", "#E0FF00", "#E8FF00", "#F0FF00", "#F8FF00", "#FFFF00",
+    "#FFFB00", "#FFF700", "#FFF300", "#FFEF00", "#FFEB00", "#FFE700", "#FFE300", "#FFDF00", "#FFDB00", "#FFD700",
+    "#FFD300", "#FFCF00", "#FFCB00", "#FFC700", "#FFC300", "#FFBF00", "#FFBB00", "#FFB700", "#FFB300", "#FFAF00",
+    "#FFAB00", "#FFA700", "#FFA300", "#FF9F00", "#FF9B00", "#FF9700", "#FF9300", "#FF8F00", "#FF8B00", "#FF8700",
+    "#FF8300", "#FF7F00", "#FF7B00", "#FF7700", "#FF7300", "#FF6F00", "#FF6B00", "#FF6700", "#FF6300", "#FF5F00",
+    "#FF5B00", "#FF5700", "#FF5300", "#FF4F00", "#FF4B00", "#FF4700", "#FF4300", "#FF3F00", "#FF3B00", "#FF3700",
+    "#FF3300", "#FF2F00", "#FF2B00", "#FF2700", "#FF2300", "#FF1F00", "#FF1B00", "#FF1700", "#FF1300", "#FF0F00",
+    "#FF0B00", "#FF0700", "#FF0300", "#FF0000", "#FA0000", "#F50000", "#F00000", "#EB0000", "#E60000", "#E10000",
+]
+
+
 OUTPUT_DIR  = "chlorophyll"
 OUTPUT_PNG  = os.path.join(OUTPUT_DIR, "chlorophyll_latest.png")
 OUTPUT_META = os.path.join(OUTPUT_DIR, "chlorophyll_latest.json")
@@ -167,22 +199,13 @@ def main():
     data = data_merc
 
     norm = mcolors.LogNorm(vmin=VMIN, vmax=VMAX, clip=True)
-    # Reconstruction de la palette "ocean color" NASA/SeaWiFS (violet foncé
-    # -> bleu -> cyan -> vert -> jaune -> orange -> rouge), cohérente avec
-    # la colorbar affichée dans vela-carto.js. Approximative — pas extraite
-    # pixel-perfect du XML de légende officiel NASA (non accessible).
-    # Stops positionnés sur les mêmes seuils que la légende NASA
-    # (0.01 / 0.03 / 0.1 / 0.3 / 1 / 3 / 10 mg/m3).
-    _nasa_chl_stops = [0.01, 0.03, 0.1, 0.3, 1, 3, 10]
-    _nasa_chl_colors = [
-        "#2b0f6b", "#1f4fd6", "#14a8d6", "#16b866",
-        "#a9d616", "#f2a71a", "#d21f1f",
-    ]
-    _lo, _hi = np.log10(VMIN), np.log10(VMAX)
-    _positions = [(np.log10(v) - _lo) / (_hi - _lo) for v in _nasa_chl_stops]
-    cmap = mcolors.LinearSegmentedColormap.from_list(
-        "nasa_chl", list(zip(_positions, _nasa_chl_colors))
-    )
+    # Palette EXACTE "ocean color" NASA/SeaWiFS (230 couleurs), extraite de
+    # la fonction chl_pal() du package R palr, elle-même dérivée du fichier
+    # source NASA originel (oceancolor.gsfc.nasa.gov/DOCS/palette_chl_etc.txt).
+    # Les couleurs sont déjà uniformément espacées en échelle log sur
+    # [0.01, 10] mg/m3 — cohérent avec LogNorm(VMIN, VMAX) ci-dessus et avec
+    # la colorbar affichée dans vela-carto.js.
+    cmap = mcolors.ListedColormap(NASA_CHL_COLORS)
     cmap.set_bad(alpha=0)  # NaN (terre, pas de donnée) -> transparent
 
     height_px = data.shape[0]
