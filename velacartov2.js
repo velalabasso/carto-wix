@@ -754,7 +754,7 @@ window.VelaCarto = {
         const lo = Math.log10(CHLORO_VMIN), hi = Math.log10(CHLORO_VMAX);
         return Math.max(0, Math.min(100, (Math.log10(v) - lo) / (hi - lo) * 100));
       };
-      const ticks = [0.01, 0.1, 1, 10].filter(v => v >= CHLORO_VMIN && v <= CHLORO_VMAX);
+      const ticks = [0.01, 0.03, 0.1, 0.3, 1, 3, 10].filter(v => v >= CHLORO_VMIN && v <= CHLORO_VMAX);
 
       chloroColorbar = document.createElement("div");
       Object.assign(chloroColorbar.style, {
@@ -764,14 +764,19 @@ window.VelaCarto = {
         borderRadius: "10px", padding: "8px 14px 6px 14px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
         border: "1px solid rgba(255,255,255,0.12)",
-        zIndex: "800", width: "240px",
+        zIndex: "800", width: "300px",
         fontFamily: "Helvetica Neue, Arial, sans-serif", color: "#dde6f0"
       });
 
-      const gradientCss = "linear-gradient(to right, #440154, #414487, #2a788e, #22a884, #7ad151, #fde725)";
-      const ticksHtml = ticks.map(v => `
-        <span style="position:absolute;left:${chloroPct(v)}%;transform:translateX(-50%);white-space:nowrap;">${v}</span>
-      `).join("");
+      // Reconstruction de la palette "ocean color" NASA/SeaWiFS (violet
+      // foncé -> bleu -> cyan -> vert -> jaune -> orange -> rouge),
+      // approximative (pas extraite pixel-perfect du XML officiel).
+      const gradientCss = "linear-gradient(to right, #2b0f6b, #1f4fd6, #14a8d6, #16b866, #a9d616, #f2a71a, #d21f1f)";
+      const ticksHtml = ticks.map((v, i) => {
+        const pct = chloroPct(v);
+        const tx  = i === 0 ? "0%" : (i === ticks.length - 1 ? "-100%" : "-50%");
+        return `<span style="position:absolute;left:${pct}%;transform:translateX(${tx});white-space:nowrap;">${v}</span>`;
+      }).join("");
 
       chloroColorbar.innerHTML = `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:6px;text-align:center;">
