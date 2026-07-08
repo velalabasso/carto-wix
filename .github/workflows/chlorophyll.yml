@@ -1,4 +1,4 @@
-name: Update chlorophyll map
+name: Update ocean layers (chlorophyll + SST)
 
 on:
   schedule:
@@ -10,7 +10,7 @@ permissions:
   contents: write   # nécessaire pour que le job puisse "git push" son commit
 
 jobs:
-  update-chlorophyll:
+  update-ocean-layers:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -32,10 +32,16 @@ jobs:
           COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
         run: python scripts/generate_chlorophyll_image.py
 
+      - name: Generate SST image
+        env:
+          COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
+          COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
+        run: python scripts/generate_sst_image.py
+
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add chlorophyll/
-          git diff --staged --quiet || git commit -m "Mise à jour automatique de la carte chlorophylle"
+          git add chlorophyll/ sst/
+          git diff --staged --quiet || git commit -m "Mise à jour automatique chlorophylle + température de surface"
           git push
