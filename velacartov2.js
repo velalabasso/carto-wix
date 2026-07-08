@@ -44,6 +44,9 @@ window.VelaCarto = {
     const CHLORO_IMAGE_PATH = "chlorophyll/chlorophyll_latest.png";
     const CHLORO_META_PATH  = "chlorophyll/chlorophyll_latest.json";
     const CHLORO_GRID_PATH  = "chlorophyll/chlorophyll_latest_grid.json";
+    // Nom affiché sous la colorbar — doit rester cohérent avec DATASET_ID
+    // dans scripts/generate_chlorophyll_image.py.
+    const CHLORO_PRODUCT_NAME = "OCEANCOLOUR_GLO_BGC_L4_NRT_009_102 (gap-free)";
     // Bornes de l'échelle de couleur — doivent rester cohérentes avec
     // VMIN/VMAX dans scripts/generate_chlorophyll_image.py.
     const CHLORO_VMIN = 0.01;
@@ -787,6 +790,9 @@ window.VelaCarto = {
         </div>
         <div style="height:10px;border-radius:4px;background:${gradientCss};margin-bottom:4px;"></div>
         <div style="position:relative;height:14px;font-size:10px;">${ticksHtml}</div>
+        <div style="margin-top:8px;font-size:9px;color:#c8dcea;text-align:center;opacity:0.85;">
+          Copernicus Marine — ${CHLORO_PRODUCT_NAME}
+        </div>
       `;
       document.getElementById("map").appendChild(chloroColorbar);
     }
