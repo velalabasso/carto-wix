@@ -64,6 +64,13 @@ window.VelaCarto = {
       + "&FORMAT=image/png&TRANSPARENT=TRUE"
       + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
       + "&BBOX={bbox-epsg-3857}";
+    // Bornes de l'échelle affichée (°C) — échelle LINÉAIRE (pas log, à la
+    // différence de la chlorophylle), colorbar bleu (froid) -> rouge (chaud),
+    // palette générique standard "température", pas extraite du XML NASA
+    // (non localisé pour ce layer).
+    const SST_VMIN = 0;
+    const SST_VMAX = 30;
+    const SST_PRODUCT_NAME = "GHRSST L4 MUR (NASA GIBS, WMS temps réel)";
 
     /* ===================== ALLURE FR ===================== */
 
@@ -219,6 +226,51 @@ window.VelaCarto = {
       if (!row) return null;
       const v = row[iLon];
       return (v === null || v === undefined) ? null : v;
+    }
+
+    /* ---- Température : lecture au survol via WMS GetFeatureInfo ---- */
+    // EXPÉRIMENTAL : requête réseau à chaque survol (avec debounce), non
+    // testée en conditions réelles — dépend du support GetFeatureInfo par
+    // le serveur NASA GIBS pour ce layer précis. Repli silencieux sur "—"
+    // en cas d'échec ou de réponse non interprétable.
+    function lngLatToMercator(lng, lat) {
+      const R = 6378137;
+      const x = R * (lng * Math.PI / 180);
+      const y = R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2));
+      return [x, y];
+    }
+
+    let sstFetchTimer = null;
+    function debounceSstLookup(lng, lat) {
+      clearTimeout(sstFetchTimer);
+      sstFetchTimer = setTimeout(() => fetchSstValueAt(lng, lat), 300);
+    }
+
+    async function fetchSstValueAt(lng, lat) {
+      const svEl = document.getElementById("sst-value");
+      if (!svEl) return;
+      try {
+        const [x, y] = lngLatToMercator(lng, lat);
+        const halfWidthM = 5000; // ~5 km de demi-largeur autour du point
+        const bbox = [x - halfWidthM, y - halfWidthM, x + halfWidthM, y + halfWidthM].join(",");
+        const url =
+          "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
+          + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo"
+          + `&LAYERS=${SST_LAYER_NAME}&QUERY_LAYERS=${SST_LAYER_NAME}`
+          + "&STYLES=&SRS=EPSG:3857"
+          + `&BBOX=${bbox}&WIDTH=101&HEIGHT=101&X=50&Y=50`
+          + "&INFO_FORMAT=text/plain";
+        const text = await fetchText(url);
+        // Extraction best-effort du premier nombre trouvé dans la réponse —
+        // le format exact (text/plain, XML...) n'est pas garanti connu à l'avance.
+        const m = text && text.match(/-?\d+(\.\d+)?/);
+        if (!m) { svEl.innerText = "— °C"; return; }
+        const v = parseFloat(m[0]);
+        if (!isFinite(v) || v < -5 || v > 50) { svEl.innerText = "— °C"; return; }
+        svEl.innerText = `${v.toFixed(1)} °C`;
+      } catch(e) {
+        svEl.innerText = "— °C";
+      }
     }
 
     async function fetchText(url) {
@@ -701,9 +753,37 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(chloroWidget);
     }
 
+    /* ---- Widget Température (même coin, un seul visible à la fois) ---- */
+    // NOTE : valeur lue en direct via WMS GetFeatureInfo (voir plus bas) —
+    // fonctionnalité non testée en conditions réelles, à vérifier une fois
+    // en ligne. Si le serveur NASA GIBS ne la supporte pas pour ce layer,
+    // le widget affiche simplement "—" sans rien casser.
+    let sstWidget = null;
+    if (!isMini) {
+      sstWidget = document.createElement("div");
+      Object.assign(sstWidget.style, {
+        position: "absolute", top: "12px", left: "12px",
+        display: "none", flexDirection: "column",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "12px", padding: "6px 12px 8px 12px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        minWidth: "70px", zIndex: "800", pointerEvents: "none"
+      });
+      sstWidget.innerHTML = `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+          color:#c8dcea;font-family:Helvetica Neue,Arial,sans-serif;
+          font-weight:500;margin-bottom:2px;">Température</div>
+        <div id="sst-value" style="font-size:16px;font-weight:700;color:white;
+          font-family:Helvetica Neue,Arial,sans-serif;letter-spacing:-.01em;
+          line-height:1.2;text-shadow:0 1px 6px rgba(0,0,0,0.4);">— °C</div>`;
+      document.getElementById("map").appendChild(sstWidget);
+    }
+
     /* ---- Sélecteur de fond de carte : Vent / Chlorophylle / Température (exclusif) ---- */
     let baseLayerControl  = null;
     let chloroColorbar    = null;
+    let sstColorbar       = null;
     let activeBaseLayer   = "wind"; // "wind" | "chloro" | "sst"
 
     function setBaseLayer(layer) {
@@ -727,6 +807,8 @@ window.VelaCarto = {
       if (windWidget)     windWidget.style.display     = layer === "wind"   ? "flex"  : "none";
       if (chloroWidget)   chloroWidget.style.display    = layer === "chloro" ? "flex"  : "none";
       if (chloroColorbar) chloroColorbar.style.display  = layer === "chloro" ? "block" : "none";
+      if (sstWidget)       sstWidget.style.display       = layer === "sst"    ? "flex"  : "none";
+      if (sstColorbar)     sstColorbar.style.display     = layer === "sst"    ? "block" : "none";
 
       if (baseLayerControl) {
         baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
@@ -741,26 +823,51 @@ window.VelaCarto = {
     if (!isMini) {
       baseLayerControl = document.createElement("div");
       Object.assign(baseLayerControl.style, {
-        position: "absolute", bottom: "64px", right: "12px",
-        display: "flex", gap: "4px",
+        position: "absolute", bottom: "64px", right: "12px", width: "282px",
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
-        borderRadius: "10px", padding: "4px",
+        borderRadius: "10px", padding: "4px 6px 6px 6px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
         border: "1px solid rgba(255,255,255,0.12)",
         zIndex: "800", fontFamily: "Helvetica Neue, Arial, sans-serif", fontSize: "12px"
       });
       baseLayerControl.innerHTML = `
-        <button data-layer="wind" style="border:none;border-radius:7px;padding:6px 12px;
-          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
-          transition:background .15s,color .15s,box-shadow .15s;">Vent</button>
-        <button data-layer="chloro" style="border:none;border-radius:7px;padding:6px 12px;
-          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
-          transition:background .15s,color .15s,box-shadow .15s;">Chlorophylle</button>
-        <button data-layer="sst" style="border:none;border-radius:7px;padding:6px 12px;
-          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
-          transition:background .15s,color .15s,box-shadow .15s;">Température</button>
+        <div id="blc-header" style="display:flex;align-items:center;justify-content:space-between;
+          gap:10px;cursor:pointer;user-select:none;padding:4px 4px 6px 4px;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;">Fond de carte</span>
+          <svg id="blc-toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c8dcea"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="blc-body" style="display:flex;gap:4px;">
+          <button data-layer="wind" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+            cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            transition:background .15s,color .15s,box-shadow .15s;">Vent</button>
+          <button data-layer="chloro" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+            cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            transition:background .15s,color .15s,box-shadow .15s;">Chlorophylle</button>
+          <button data-layer="sst" style="flex:1;min-width:0;border:none;border-radius:7px;padding:6px 2px;
+            cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            transition:background .15s,color .15s,box-shadow .15s;">Température</button>
+        </div>
       `;
       document.getElementById("map").appendChild(baseLayerControl);
+
+      const blcHeader = baseLayerControl.querySelector("#blc-header");
+      const blcBody   = baseLayerControl.querySelector("#blc-body");
+      const blcIcon   = baseLayerControl.querySelector("#blc-toggle-icon");
+      // Sur mobile, replié par défaut — repliable dans tous les cas (clic sur l'en-tête).
+      if (isMobile) {
+        blcBody.style.display  = "none";
+        blcIcon.style.transform = "rotate(-90deg)";
+      }
+      blcHeader.addEventListener("click", () => {
+        const collapsed = blcBody.style.display === "none";
+        blcBody.style.display  = collapsed ? "flex" : "none";
+        blcIcon.style.transform = collapsed ? "rotate(0deg)" : "rotate(-90deg)";
+      });
 
       baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
         btn.addEventListener("click", () => setBaseLayer(btn.dataset.layer));
@@ -815,6 +922,51 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(chloroColorbar);
     }
 
+    /* ---- Colorbar Température (bas de carte, centrée, échelle linéaire) ---- */
+    if (!isMini) {
+      // Position en % le long du dégradé (échelle LINÉAIRE, contrairement
+      // à la chlorophylle qui est en log)
+      const sstPct = v => {
+        return Math.max(0, Math.min(100, (v - SST_VMIN) / (SST_VMAX - SST_VMIN) * 100));
+      };
+      const sstTicks = [0, 10, 20, 30].filter(v => v >= SST_VMIN && v <= SST_VMAX);
+
+      sstColorbar = document.createElement("div");
+      Object.assign(sstColorbar.style, {
+        position: "absolute", bottom: "64px", left: "50%", transform: "translateX(-50%)",
+        display: "none",
+        background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
+        borderRadius: "10px", padding: "8px 14px 6px 14px",
+        boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        zIndex: "800", width: "320px",
+        fontFamily: "Helvetica Neue, Arial, sans-serif", color: "#dde6f0"
+      });
+
+      // Palette générique "température" (bleu froid -> rouge chaud) —
+      // approximative, pas extraite du XML de légende NASA (non localisé
+      // pour ce layer).
+      const sstGradientCss = "linear-gradient(to right, #08306b, #2166ac, #67a9cf, #d1e5f0, #fddbc7, #ef8a62, #b2182b)";
+      const sstTicksHtml = sstTicks.map((v, i) => {
+        const pct = sstPct(v);
+        const tx  = i === 0 ? "0%" : (i === sstTicks.length - 1 ? "-100%" : "-50%");
+        return `<span style="position:absolute;left:${pct}%;transform:translateX(${tx});white-space:nowrap;">${v}</span>`;
+      }).join("");
+
+      sstColorbar.innerHTML = `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#c8dcea;margin-bottom:6px;text-align:center;">
+          Température de surface (°C)
+        </div>
+        <div style="height:10px;border-radius:4px;background:${sstGradientCss};margin-bottom:4px;"></div>
+        <div style="position:relative;height:14px;font-size:10px;">${sstTicksHtml}</div>
+        <div style="margin-top:8px;font-size:8.5px;color:#c8dcea;text-align:center;
+          opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${SST_PRODUCT_NAME}
+        </div>
+      `;
+      document.getElementById("map").appendChild(sstColorbar);
+    }
+
     /* ---- Chlorophylle : valeur au survol (widget) ---- */
     map.on("mousemove", e => {
       const cvEl = document.getElementById("chloro-value");
@@ -826,6 +978,16 @@ window.VelaCarto = {
     map.on("mouseout", () => {
       const cvEl = document.getElementById("chloro-value");
       if (cvEl) cvEl.innerText = "— mg/m³";
+    });
+
+    /* ---- Température : valeur au survol (widget, debounced) ---- */
+    map.on("mousemove", e => {
+      if (activeBaseLayer !== "sst") return;
+      debounceSstLookup(e.lngLat.lng, e.lngLat.lat);
+    });
+    map.on("mouseout", () => {
+      const svEl = document.getElementById("sst-value");
+      if (svEl) svEl.innerText = "— °C";
     });
 
 
