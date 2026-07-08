@@ -560,7 +560,7 @@ window.VelaCarto = {
     });
 
     let bottomLeftContainer = null;
-    if (!isMini && !isMobile) {
+    if (!isMini) {
       bottomLeftContainer = document.createElement("div");
       Object.assign(bottomLeftContainer.style, {
         position: "absolute", bottom: "52px", left: "12px",
@@ -575,7 +575,7 @@ window.VelaCarto = {
     let departureMs = DEPARTURE_MS;
 
     let navPanel = null;
-    if (!isMini && !isMobile) {
+    if (!isMini) {
       navPanel = document.createElement("div");
       Object.assign(navPanel.style, {
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
@@ -602,6 +602,11 @@ window.VelaCarto = {
       const vnHeader = navPanel.querySelector("#vn-header");
       const vnBody   = navPanel.querySelector("#vn-body");
       const vnIcon   = navPanel.querySelector("#vn-toggle-icon");
+      // Sur mobile, le panneau démarre replié (seul le titre est visible).
+      if (isMobile) {
+        vnBody.style.display   = "none";
+        vnIcon.style.transform = "rotate(-90deg)";
+      }
       vnHeader.addEventListener("click", () => {
         const collapsed = vnBody.style.display === "none";
         vnBody.style.display   = collapsed ? "" : "none";
@@ -661,7 +666,7 @@ window.VelaCarto = {
     ];
 
     let sciPanel = null;
-    if (!isMini && !isMobile) {
+    if (!isMini) {
       sciPanel = document.createElement("div");
       Object.assign(sciPanel.style, {
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
@@ -714,6 +719,11 @@ window.VelaCarto = {
       const sciHeader = sciPanel.querySelector("#sci-header");
       const sciBody   = sciPanel.querySelector("#sci-body");
       const sciIcon   = sciPanel.querySelector("#sci-toggle-icon");
+      // Sur mobile, le panneau démarre replié (seul le titre est visible).
+      if (isMobile) {
+        sciBody.style.display  = "none";
+        sciIcon.style.transform = "rotate(-90deg)";
+      }
       sciHeader.addEventListener("click", () => {
         const collapsed = sciBody.style.display === "none";
         sciBody.style.display  = collapsed ? "" : "none";
