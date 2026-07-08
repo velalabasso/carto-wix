@@ -442,6 +442,7 @@ window.VelaCarto = {
     /* ===================== WIND LAYER ===================== */
 
     const windLayer = new maptilerweather.WindLayer({
+      id: "wind-layer",
       colorramp: new maptilerweather.ColorRamp({ stops: [
         { value: 0,   color: [98,113,183,255]  }, { value: 1,   color: [57,97,159,255]   },
         { value: 3,   color: [74,148,169,255]  }, { value: 5,   color: [77,141,123,255]  },
@@ -562,47 +563,58 @@ window.VelaCarto = {
       document.getElementById("map").appendChild(windWidget);
     }
 
-    /* ---- Bouton toggle Chlorophylle ---- */
-    let chloroToggle = null;
+    /* ---- Sélecteur de fond de carte : Vent / Chlorophylle (exclusif) ---- */
+    let baseLayerControl = null;
+    let activeBaseLayer  = "wind"; // "wind" | "chloro"
+
+    function setBaseLayer(layer) {
+      activeBaseLayer = layer;
+      try {
+        if (map.getLayer("wind-layer")) {
+          map.setLayoutProperty("wind-layer", "visibility", layer === "wind" ? "visible" : "none");
+        }
+      } catch(e) { /* layer pas encore prête */ }
+      try {
+        if (map.getLayer("chlorophyll-layer")) {
+          map.setLayoutProperty("chlorophyll-layer", "visibility", layer === "chloro" ? "visible" : "none");
+        }
+      } catch(e) { /* layer pas encore prête */ }
+
+      if (windWidget) windWidget.style.display = layer === "wind" ? "flex" : "none";
+
+      if (baseLayerControl) {
+        baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
+          const isActive = btn.dataset.layer === layer;
+          btn.style.background = isActive ? "#2563eb" : "transparent";
+          btn.style.color      = isActive ? "white" : "#dde6f0";
+          btn.style.boxShadow  = isActive ? "0 0 6px rgba(37,99,235,0.6)" : "none";
+        });
+      }
+    }
+
     if (!isMini) {
-      chloroToggle = document.createElement("div");
-      Object.assign(chloroToggle.style, {
+      baseLayerControl = document.createElement("div");
+      Object.assign(baseLayerControl.style, {
         position: "absolute", top: "12px", right: "12px",
-        display: "flex", alignItems: "center", gap: "8px",
+        display: "flex", gap: "4px",
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
-        borderRadius: "12px", padding: "8px 12px",
+        borderRadius: "10px", padding: "4px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
         border: "1px solid rgba(255,255,255,0.12)",
-        zIndex: "800", cursor: "pointer", userSelect: "none",
-        fontFamily: "Helvetica Neue, Arial, sans-serif", fontSize: "12px", color: "#dde6f0"
+        zIndex: "800", fontFamily: "Helvetica Neue, Arial, sans-serif", fontSize: "12px"
       });
-      chloroToggle.innerHTML = `
-        <span>Chlorophylle</span>
-        <div class="vela-pill" data-active="false" style="
-          width:30px;height:16px;border-radius:99px;flex-shrink:0;
-          background:rgba(180,180,180,0.3);
-          position:relative;transition:background .2s,box-shadow .2s;">
-          <div class="vela-knob" style="
-            position:absolute;top:2px;
-            width:12px;height:12px;border-radius:50%;
-            background:white;
-            transform:translateX(1px);
-            transition:transform .2s;
-            box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
-        </div>`;
-      document.getElementById("map").appendChild(chloroToggle);
+      baseLayerControl.innerHTML = `
+        <button data-layer="wind" style="border:none;border-radius:7px;padding:6px 12px;
+          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
+          transition:background .15s,color .15s,box-shadow .15s;">Vent</button>
+        <button data-layer="chloro" style="border:none;border-radius:7px;padding:6px 12px;
+          cursor:pointer;font:inherit;color:#dde6f0;background:transparent;
+          transition:background .15s,color .15s,box-shadow .15s;">Chlorophylle</button>
+      `;
+      document.getElementById("map").appendChild(baseLayerControl);
 
-      chloroToggle.addEventListener("click", () => {
-        const pill = chloroToggle.querySelector(".vela-pill");
-        const knob = chloroToggle.querySelector(".vela-knob");
-        const active = pill.dataset.active !== "true";
-        pill.dataset.active = active;
-        pill.style.background = active ? "#2563eb" : "rgba(180,180,180,0.3)";
-        pill.style.boxShadow  = active ? "0 0 6px rgba(37,99,235,0.6)" : "none";
-        knob.style.transform  = active ? "translateX(14px)" : "translateX(1px)";
-        if (map.getLayer("chlorophyll-layer")) {
-          map.setLayoutProperty("chlorophyll-layer", "visibility", active ? "visible" : "none");
-        }
+      baseLayerControl.querySelectorAll("[data-layer]").forEach(btn => {
+        btn.addEventListener("click", () => setBaseLayer(btn.dataset.layer));
       });
     }
 
@@ -972,6 +984,9 @@ window.VelaCarto = {
           map.addLayer(windLayer);
         }
       } catch(e) { console.warn("Couche vent :", e); }
+
+      // Synchronise l'état visuel du sélecteur avec les couches (Vent actif par défaut)
+      setBaseLayer(activeBaseLayer);
 
       /* ---- Tracé principal ---- */
       map.addSource("vela-live-track", { type: "geojson", data: EMPTY_FC });
