@@ -25,18 +25,29 @@ window.VelaCarto = {
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
     /* ===================== CHLOROPHYLLE (NASA GIBS) ===================== */
-    // Tuiles satellite quotidiennes MODIS Aqua Chlorophyll-a, publiques,
+    // Couche satellite quotidienne Chlorophylle-a (Aqua/MODIS), publique,
     // sans clé API. On prend "hier" en UTC pour être sûr que l'image du
     // jour soit déjà publiée (délai de publication habituel de GIBS).
+    // NOTE : "MODIS_Aqua_Chlorophyll_A" est un identifiant retiré par la NASA
+    // en mars 2022 ; le remplaçant actif est "MODIS_Aqua_L2_Chlorophyll_A".
+    // On passe par le WMS de GIBS (GetMap + {bbox-epsg-3857}) plutôt que par
+    // le WMTS : cela évite de devoir connaître le "TileMatrixSet" exact du
+    // layer (non documenté publiquement), MapLibre calculant lui-même la
+    // bbox de chaque tuile.
     const CHLORO_DATE = (() => {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - 1);
       return d.toISOString().slice(0, 10);
     })();
-    const CHLORO_LAYER_NAME = "MODIS_Aqua_Chlorophyll_A";
+    const CHLORO_LAYER_NAME = "MODIS_Aqua_L2_Chlorophyll_A";
     const CHLORO_TILE_URL =
-      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${CHLORO_LAYER_NAME}/default/`
-      + `${CHLORO_DATE}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
+      "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
+      + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap"
+      + `&LAYERS=${CHLORO_LAYER_NAME}&STYLES=`
+      + "&FORMAT=image/png&TRANSPARENT=TRUE"
+      + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
+      + `&TIME=${CHLORO_DATE}`
+      + "&BBOX={bbox-epsg-3857}";
 
     /* ===================== ALLURE FR ===================== */
 
@@ -966,7 +977,6 @@ window.VelaCarto = {
           type: "raster",
           tiles: [CHLORO_TILE_URL],
           tileSize: 256,
-          maxzoom: 7,
           attribution: "NASA GIBS / MODIS Aqua"
         });
         map.addLayer({
