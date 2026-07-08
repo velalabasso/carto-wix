@@ -52,25 +52,24 @@ window.VelaCarto = {
     const CHLORO_VMIN = 0.01;
     const CHLORO_VMAX = 10.0;
 
-    /* ===================== TEMPÉRATURE DE SURFACE (NASA GIBS) ===================== */
-    // Couche GHRSST L4 MUR (Group for High Resolution SST), résolution ~1km,
-    // composite quotidien global. Même technique WMS que la chlorophylle,
-    // pas de TIME → toujours la donnée la plus récente disponible.
-    const SST_LAYER_NAME = "GHRSST_L4_MUR_Sea_Surface_Temperature";
-    const SST_TILE_URL =
-      "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
-      + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap"
-      + `&LAYERS=${SST_LAYER_NAME}&STYLES=`
-      + "&FORMAT=image/png&TRANSPARENT=TRUE"
-      + "&HEIGHT=256&WIDTH=256&SRS=EPSG:3857"
-      + "&BBOX={bbox-epsg-3857}";
+    /* ===================== TEMPÉRATURE DE SURFACE (Copernicus Marine, via GitHub Actions) ===================== */
+    // Même architecture que la chlorophylle : image statique "gap-free"
+    // générée quotidiennement par GitHub Actions (produit Copernicus Marine
+    // "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2", système OSTIA), au lieu du
+    // layer WMS NASA GIBS utilisé avant. Raison du changement : GIBS ne
+    // supporte pas GetFeatureInfo (lecture de valeur impossible) et son
+    // fichier de légende officiel n'a pas pu être récupéré de façon fiable
+    // pour garantir une colorbar exacte. En générant l'image nous-mêmes, on
+    // contrôle la palette et on peut exporter une grille de valeurs.
+    const SST_IMAGE_PATH = "sst/sst_latest.png";
+    const SST_META_PATH  = "sst/sst_latest.json";
+    const SST_GRID_PATH  = "sst/sst_latest_grid.json";
     // Bornes de l'échelle affichée (°C) — échelle LINÉAIRE (pas log, à la
-    // différence de la chlorophylle), colorbar bleu (froid) -> rouge (chaud),
-    // palette générique standard "température", pas extraite du XML NASA
-    // (non localisé pour ce layer).
+    // différence de la chlorophylle). Doivent rester cohérentes avec
+    // VMIN/VMAX dans scripts/generate_sst_image.py.
     const SST_VMIN = 0;
     const SST_VMAX = 30;
-    const SST_PRODUCT_NAME = "GHRSST L4 MUR (NASA GIBS, WMS temps réel)";
+    const SST_PRODUCT_NAME = "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2 (OSTIA, gap-free)";
 
     /* ===================== ALLURE FR ===================== */
 
@@ -192,6 +191,38 @@ window.VelaCarto = {
       }
     }
 
+    async function loadSstImage() {
+      const meta = await fetchJSON(cartoRawUrl(SST_META_PATH));
+      if (!meta || !isFinite(meta.west) || !isFinite(meta.east)
+          || !isFinite(meta.south) || !isFinite(meta.north)) {
+        console.warn("Température : bornes géographiques indisponibles.");
+        return;
+      }
+      const coordinates = [
+        [meta.west, meta.north], [meta.east, meta.north],
+        [meta.east, meta.south], [meta.west, meta.south]
+      ];
+      const imageUrl = cartoRawUrl(SST_IMAGE_PATH);
+
+      const productEl = document.getElementById("sst-product");
+      if (productEl) {
+        const dateStr = formatDateFR(meta.generated_at);
+        productEl.innerText = `${dateStr} — ${SST_PRODUCT_NAME}`;
+      }
+
+      const src = map.getSource("sst-source");
+      if (src) {
+        src.updateImage({ url: imageUrl, coordinates });
+      } else {
+        map.addSource("sst-source", { type: "image", url: imageUrl, coordinates });
+        map.addLayer({
+          id: "sst-layer", type: "raster", source: "sst-source",
+          paint: { "raster-opacity": 0.75 },
+          layout: { visibility: activeBaseLayer === "sst" ? "visible" : "none" }
+        });
+      }
+    }
+
     /* ---- Grille de valeurs chlorophylle (lecture au survol) ---- */
     let chloroGrid = null; // { lats:[...] croissant, lons:[...] croissant, values:[[...]], unit }
 
@@ -228,49 +259,26 @@ window.VelaCarto = {
       return (v === null || v === undefined) ? null : v;
     }
 
-    /* ---- Température : lecture au survol via WMS GetFeatureInfo ---- */
-    // EXPÉRIMENTAL : requête réseau à chaque survol (avec debounce), non
-    // testée en conditions réelles — dépend du support GetFeatureInfo par
-    // le serveur NASA GIBS pour ce layer précis. Repli silencieux sur "—"
-    // en cas d'échec ou de réponse non interprétable.
-    function lngLatToMercator(lng, lat) {
-      const R = 6378137;
-      const x = R * (lng * Math.PI / 180);
-      const y = R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2));
-      return [x, y];
-    }
+    /* ---- Grille de valeurs SST (lecture au survol) ---- */
+    let sstGrid = null; // { lats:[...] croissant, lons:[...] croissant, values:[[...]], unit }
 
-    let sstFetchTimer = null;
-    function debounceSstLookup(lng, lat) {
-      clearTimeout(sstFetchTimer);
-      sstFetchTimer = setTimeout(() => fetchSstValueAt(lng, lat), 300);
-    }
-
-    async function fetchSstValueAt(lng, lat) {
-      const svEl = document.getElementById("sst-value");
-      if (!svEl) return;
-      try {
-        const [x, y] = lngLatToMercator(lng, lat);
-        const halfWidthM = 5000; // ~5 km de demi-largeur autour du point
-        const bbox = [x - halfWidthM, y - halfWidthM, x + halfWidthM, y + halfWidthM].join(",");
-        const url =
-          "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi"
-          + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo"
-          + `&LAYERS=${SST_LAYER_NAME}&QUERY_LAYERS=${SST_LAYER_NAME}`
-          + "&STYLES=&SRS=EPSG:3857"
-          + `&BBOX=${bbox}&WIDTH=101&HEIGHT=101&X=50&Y=50`
-          + "&INFO_FORMAT=text/plain";
-        const text = await fetchText(url);
-        // Extraction best-effort du premier nombre trouvé dans la réponse —
-        // le format exact (text/plain, XML...) n'est pas garanti connu à l'avance.
-        const m = text && text.match(/-?\d+(\.\d+)?/);
-        if (!m) { svEl.innerText = "— °C"; return; }
-        const v = parseFloat(m[0]);
-        if (!isFinite(v) || v < -5 || v > 50) { svEl.innerText = "— °C"; return; }
-        svEl.innerText = `${v.toFixed(1)} °C`;
-      } catch(e) {
-        svEl.innerText = "— °C";
+    async function loadSstGrid() {
+      const grid = await fetchJSON(cartoRawUrl(SST_GRID_PATH));
+      if (!grid || !Array.isArray(grid.lats) || !Array.isArray(grid.lons) || !Array.isArray(grid.values)) {
+        console.warn("Température : grille de valeurs indisponible.");
+        return;
       }
+      sstGrid = grid;
+    }
+
+    function sstValueAt(lng, lat) {
+      if (!sstGrid) return null;
+      const iLat = nearestIdx(sstGrid.lats, lat);
+      const iLon = nearestIdx(sstGrid.lons, lng);
+      const row = sstGrid.values[iLat];
+      if (!row) return null;
+      const v = row[iLon];
+      return (v === null || v === undefined) ? null : v;
     }
 
     async function fetchText(url) {
@@ -754,10 +762,8 @@ window.VelaCarto = {
     }
 
     /* ---- Widget Température (même coin, un seul visible à la fois) ---- */
-    // NOTE : valeur lue en direct via WMS GetFeatureInfo (voir plus bas) —
-    // fonctionnalité non testée en conditions réelles, à vérifier une fois
-    // en ligne. Si le serveur NASA GIBS ne la supporte pas pour ce layer,
-    // le widget affiche simplement "—" sans rien casser.
+    // Valeur lue localement dans la grille sst-grid (même mécanisme que
+    // la chlorophylle) — plus de requête réseau au survol.
     let sstWidget = null;
     if (!isMini) {
       sstWidget = document.createElement("div");
@@ -943,9 +949,10 @@ window.VelaCarto = {
         fontFamily: "Helvetica Neue, Arial, sans-serif", color: "#dde6f0"
       });
 
-      // Palette générique "température" (bleu froid -> rouge chaud) —
-      // approximative, pas extraite du XML de légende NASA (non localisé
-      // pour ce layer).
+      // Palette ColorBrewer "RdBu" (bleu froid -> rouge chaud), schéma
+      // standard reconnu. Générée par nous (via Copernicus Marine, voir
+      // generate_sst_image.py), donc garantie cohérente avec l'image
+      // affichée — plus de risque de décalage avec une source externe.
       const sstGradientCss = "linear-gradient(to right, #08306b, #2166ac, #67a9cf, #d1e5f0, #fddbc7, #ef8a62, #b2182b)";
       const sstTicksHtml = sstTicks.map((v, i) => {
         const pct = sstPct(v);
@@ -959,9 +966,9 @@ window.VelaCarto = {
         </div>
         <div style="height:10px;border-radius:4px;background:${sstGradientCss};margin-bottom:4px;"></div>
         <div style="position:relative;height:14px;font-size:10px;">${sstTicksHtml}</div>
-        <div style="margin-top:8px;font-size:8.5px;color:#c8dcea;text-align:center;
+        <div id="sst-product" style="margin-top:8px;font-size:8.5px;color:#c8dcea;text-align:center;
           opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          ${SST_PRODUCT_NAME}
+          — mise à jour — ${SST_PRODUCT_NAME}
         </div>
       `;
       document.getElementById("map").appendChild(sstColorbar);
@@ -980,10 +987,13 @@ window.VelaCarto = {
       if (cvEl) cvEl.innerText = "— mg/m³";
     });
 
-    /* ---- Température : valeur au survol (widget, debounced) ---- */
+    /* ---- Température : valeur au survol (widget) ---- */
     map.on("mousemove", e => {
-      if (activeBaseLayer !== "sst") return;
-      debounceSstLookup(e.lngLat.lng, e.lngLat.lat);
+      const svEl = document.getElementById("sst-value");
+      if (!svEl) return;
+      if (activeBaseLayer !== "sst") { svEl.innerText = "— °C"; return; }
+      const v = sstValueAt(e.lngLat.lng, e.lngLat.lat);
+      svEl.innerText = (v === null) ? "— °C" : `${v.toFixed(1)} °C`;
     });
     map.on("mouseout", () => {
       const svEl = document.getElementById("sst-value");
@@ -1332,6 +1342,11 @@ window.VelaCarto = {
         await loadChlorophyllGrid();
       } catch(e) { console.warn("Refresh chlorophylle :", e); }
 
+      try {
+        await loadSstImage();
+        await loadSstGrid();
+      } catch(e) { console.warn("Refresh température :", e); }
+
       window.dispatchEvent(new Event("velacarto:pointsready"));
     }
 
@@ -1345,19 +1360,10 @@ window.VelaCarto = {
         await loadChlorophyllGrid();
       } catch(e) { console.warn("Couche chlorophylle :", e); }
 
-      /* ---- Température de surface (fond, sous tout le reste) ---- */
+      /* ---- Température de surface (fond, sous tout le reste) — image statique Copernicus ---- */
       try {
-        map.addSource("sst-source", {
-          type: "raster",
-          tiles: [SST_TILE_URL],
-          tileSize: 256,
-          attribution: "NASA GIBS / GHRSST"
-        });
-        map.addLayer({
-          id: "sst-layer", type: "raster", source: "sst-source",
-          paint: { "raster-opacity": 0.75 },
-          layout: { visibility: "none" } // masquée par défaut, activable via le bouton
-        });
+        await loadSstImage();
+        await loadSstGrid();
       } catch(e) { console.warn("Couche température :", e); }
 
 
