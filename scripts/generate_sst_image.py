@@ -49,8 +49,8 @@ import copernicusmarine
 DATASET_ID = "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2"
 VARIABLE   = "analysed_sst"  # en Kelvin dans le fichier source
 
-MIN_LON, MAX_LON = -75.0, 20.0
-MIN_LAT, MAX_LAT = -5.0, 50.0
+MIN_LON, MAX_LON = -180.0, 180.0
+MIN_LAT, MAX_LAT = -85.0, 85.0
 
 # Échelle linéaire (°C) — cohérente avec SST_VMIN/SST_VMAX dans vela-carto.js
 VMIN, VMAX = 0.0, 30.0
