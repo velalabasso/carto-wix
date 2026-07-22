@@ -40,6 +40,15 @@ window.VelaBlog = (function () {
       url      : "https://www.velalab.org/post/premiers-milles-premi%C3%A8res-gal%C3%A8res",
       image    : "https://static.wixstatic.com/media/7feff5_76cd0830c1274586875d5e664d388d2b~mv2.jpeg",
       excerpt  : "Derniers adieux sur le quai, les amarres sont larguées, notre nouvelle trinquette bretonne et la grand-voile sont hissées."
+    },
+    {
+      coords   : null,
+      timestamp: "2026-06-16T08:22:00Z",
+      title    : "La boucle des îles italiennes",
+      date     : "16 juin 2026",
+      url      : "https://www.velalab.org/post/la-boucle-des-%C3%AEles-italiennes",
+      image    : "https://static.wixstatic.com/media/7feff5_ab7820265f1f44cda5d2980847991e3c~mv2.jpeg/v1/fill/w_1720,h_1292,fp_0.50_0.50,q_90,enc_avif,quality_auto/7feff5_ab7820265f1f44cda5d2980847991e3c~mv2.jpeg",
+      excerpt  : "Boucle des îles italiennes et mise en place des stations biologiques couplée aux prélèvements hypernets"
     }
   ];
 
