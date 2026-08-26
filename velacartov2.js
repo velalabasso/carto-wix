@@ -88,14 +88,14 @@ window.VelaCarto = {
     /* ===================== SCIENCE CONFIG ===================== */
 
     const SCIENCE_PT = {
-      hypernet     : { label: "Mesure Hypernet",    color: "#f59e0b" },
-      net          : { label: "Station Biologie",   color: "#10b981" },
-      ctd_profile  : { label: "Station CTD",        color: "#a855f7" },
-      ctd_intercomp: { label: "Station CTD",        color: "#a855f7" }
+      hypernet     : { label: "Station hyperspectrale",    color: "#f59e0b" },
+      net          : { label: "Station biologie",   color: "#10b981" },
+      ctd_profile  : { label: "Station CTD température-salinité",        color: "#a855f7" },
+      ctd_intercomp: { label: "Station CTD température-salinité",        color: "#a855f7" }
     };
     const SCIENCE_CT = {
-      inline   : { label: "Inline (continu)",   color: "#ef4444" },
-      ctd_keel : { label: "CTD Keel (continu)", color: "#3b82f6" }
+      inline   : { label: "Pompage CO2-chlorophylle (en continu)",   color: "#ef4444" },
+      ctd_keel : { label: "CTD sur la quille (en continu)", color: "#3b82f6" }
     };
 
     const ALL_SCIENCE = [...Object.keys(SCIENCE_PT), ...Object.keys(SCIENCE_CT)];
