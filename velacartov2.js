@@ -1465,9 +1465,9 @@ window.VelaCarto = {
       map.addLayer({
         id: "sci-pt-ctd-circle", type: "circle", source: "sci-pt-ctd",
         paint: {
-          "circle-radius"        : isMini ? 5 : 8,
+          "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.ctd_profile.color,
-          "circle-stroke-width"  : 2,
+          "circle-stroke-width"  : 1.5,
           "circle-stroke-color"  : STROKE_COLORS.ctd_profile
         }
       });
