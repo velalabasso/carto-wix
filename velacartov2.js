@@ -1125,11 +1125,11 @@ window.VelaCarto = {
     /* ===================== PANNEAU SCIENCE ===================== */
 
     const sciRows = [
-      { keys: ["hypernet"],                   label: "Mesure Hypernet",    color: SCIENCE_PT.hypernet.color,    type: "dot"  },
-      { keys: ["net"],                         label: "Station Biologie",   color: SCIENCE_PT.net.color,         type: "dot"  },
-      { keys: ["ctd_profile","ctd_intercomp"], label: "Station CTD",        color: SCIENCE_PT.ctd_profile.color, type: "dot"  },
-      { keys: ["inline"],                      label: "Inline (continu)",   color: SCIENCE_CT.inline.color,      type: "line" },
-      { keys: ["ctd_keel"],                    label: "CTD Keel (continu)", color: SCIENCE_CT.ctd_keel.color,    type: "line" }
+  { keys: ["hypernet"],                   label: "Station hyperspectrale",            color: SCIENCE_PT.hypernet.color,    type: "dot"  },
+  { keys: ["net"],                         label: "Station biologie",                  color: SCIENCE_PT.net.color,         type: "dot"  },
+  { keys: ["ctd_profile","ctd_intercomp"], label: "Station CTD température-salinité",  color: SCIENCE_PT.ctd_profile.color, type: "dot"  },
+  { keys: ["inline"],                      label: "Pompage CO2-chlorophylle (en continu)", color: SCIENCE_CT.inline.color,   type: "line" },
+  { keys: ["ctd_keel"],                    label: "CTD sur la quille (en continu)",    color: SCIENCE_CT.ctd_keel.color,    type: "line" }
     ];
 
     let sciPanel = null;
