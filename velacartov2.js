@@ -1471,7 +1471,6 @@ window.VelaCarto = {
           "circle-stroke-color"  : STROKE_COLORS.ctd_profile
         }
       });
-
       /* ===================== MARQUEUR BATEAU ===================== */
 
       const boatSize = isMini ? 30 : 45;
