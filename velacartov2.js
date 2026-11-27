@@ -567,6 +567,22 @@ window.VelaCarto = {
       return { type: "FeatureCollection", features };
     }
 
+    // Station biologie = fenêtre continue où "station_bio" OU "net" est ON.
+    // Un seul point au début de chaque fenêtre : un filet tiré pendant une
+    // station BIO ne crée donc pas de 2e point.
+    function buildBioGeoJSON(slice) {
+      const features = []; let wasOn = false;
+      slice.forEach(p => {
+        const on = p.station_bio === "ON" || p.net === "ON";
+        if (on && !wasOn) {
+          features.push({ type: "Feature", properties: { key: "net" },
+            geometry: { type: "Point", coordinates: [p.lon, p.lat] } });
+        }
+        wasOn = on;
+      });
+      return { type: "FeatureCollection", features };
+    }
+
     function buildPtGeoJSON(slice, keys) {
       const features = []; const wasOn = {};
       keys.forEach(k => wasOn[k] = false);
@@ -1635,8 +1651,9 @@ window.VelaCarto = {
       if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
       const srcN = map.getSource("sci-pt-net");
-      // Station biologie : 1 point à chaque "station bio on"
-      if (srcN) srcN.setData(sciVis.net ? buildPtGeoJSON(slice, ["station_bio"]) : EMPTY_FC);
+      // Station biologie : 1 point par station, qu'elle ait été loggée avec
+      // "station bio on" (nouveau) ou seulement "net on" (anciennes stations)
+      if (srcN) srcN.setData(sciVis.net ? buildBioGeoJSON(slice) : EMPTY_FC);
 
       const srcC = map.getSource("sci-pt-ctd");
       if (srcC) srcC.setData(sciVis.ctd_profile ? buildPtGeoJSON(slice, ["ctd_profile","ctd_intercomp"]) : EMPTY_FC);
