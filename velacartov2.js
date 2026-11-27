@@ -1826,6 +1826,26 @@ window.VelaCarto = {
         });
       });
 
+      /* ---- Écartement des points de station au dézoom ---- */
+      // Quand on dézoome, des stations de types différents faites au même
+      // endroit (ex. biologie + hyperspectrale) se superposaient : une seule
+      // restait visible. Chaque type est donc légèrement décalé à l'écran
+      // (en pixels) pour qu'ils apparaissent côte à côte. Le décalage
+      // diminue en zoomant et disparaît au zoom 11 (position exacte).
+      const SPREAD_PX = isMini ? 0.75 : 1;
+      const SPREAD = {                     // décalage [x, y] en pixels
+        hypernet: [-6 * SPREAD_PX,  3 * SPREAD_PX],   // à gauche
+        bio     : [ 6 * SPREAD_PX,  3 * SPREAD_PX],   // à droite
+        ctd     : [ 0,             -7 * SPREAD_PX]    // au-dessus
+      };
+      const SPREAD_FULL_ZOOM = 8;   // décalage complet jusqu'à ce zoom
+      const SPREAD_NONE_ZOOM = 11;  // plus aucun décalage à partir de ce zoom
+      function spreadOffset(kind) {
+        return ["interpolate", ["linear"], ["zoom"],
+          SPREAD_FULL_ZOOM, ["literal", SPREAD[kind]],
+          SPREAD_NONE_ZOOM, ["literal", [0, 0]]];
+      }
+
       /* ---- Hypernet : clustering natif MapTiler/MapLibre ---- */
       // Au dézoom : 1 point représentatif par groupe (cluster)
       // Au zoom élevé (> clusterMaxZoom) : tous les points individuels
@@ -1845,7 +1865,8 @@ window.VelaCarto = {
           "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.hypernet.color,
           "circle-stroke-width"  : 1.5,
-          "circle-stroke-color"  : STROKE_COLORS.hypernet
+          "circle-stroke-color"  : STROKE_COLORS.hypernet,
+          "circle-translate"     : spreadOffset("hypernet")
         }
       });
 
@@ -1860,7 +1881,8 @@ window.VelaCarto = {
           "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.hypernet.color,
           "circle-stroke-width"  : 1.5,
-          "circle-stroke-color"  : STROKE_COLORS.hypernet
+          "circle-stroke-color"  : STROKE_COLORS.hypernet,
+          "circle-translate"     : spreadOffset("hypernet")
         }
       });
 
@@ -1872,7 +1894,8 @@ window.VelaCarto = {
           "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.net.color,
           "circle-stroke-width"  : 1.5,
-          "circle-stroke-color"  : STROKE_COLORS.net
+          "circle-stroke-color"  : STROKE_COLORS.net,
+          "circle-translate"     : spreadOffset("bio")
         }
       });
 
@@ -1884,7 +1907,8 @@ window.VelaCarto = {
           "circle-radius"        : isMini ? 3 : 4,
           "circle-color"         : SCIENCE_PT.ctd_profile.color,
           "circle-stroke-width"  : 1.5,
-          "circle-stroke-color"  : STROKE_COLORS.ctd_profile
+          "circle-stroke-color"  : STROKE_COLORS.ctd_profile,
+          "circle-translate"     : spreadOffset("ctd")
         }
       });
       /* ===================== MARQUEUR BATEAU ===================== */
