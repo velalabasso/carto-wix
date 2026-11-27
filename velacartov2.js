@@ -25,10 +25,10 @@ window.VelaCarto = {
     const DEPARTURE_MS = new Date("2026-04-25T18:32:00Z").getTime();
 
     /* ===================== STYLE DE LA TRACE ===================== */
-    // Trace blanche avec un trait bleu au milieu (2 lignes superposées).
-    const TRACK_WHITE_WIDTH = isMini ? 3   : 4.5;  // largeur du trait blanc (bord)
-    const TRACK_BLUE_WIDTH  = isMini ? 1   : 1.5;  // largeur du trait bleu (centre)
-    const TRACK_BLUE_COLOR  = "#2563eb";
+    // Trace blanche. Quand la CTD quille est ON, un trait bleu plus fin
+    // est dessiné au milieu de la trace blanche.
+    const TRACK_WIDTH     = isMini ? 2   : 3;    // trait blanc (trace)
+    const CTD_KEEL_WIDTH  = isMini ? 0.8 : 1.2;  // trait bleu fin au milieu (CTD quille ON)
 
     // Rafraîchissement des fonds chlorophylle / température (données
     // quotidiennes : inutile de les recharger toutes les 2 min).
@@ -207,7 +207,7 @@ window.VelaCarto = {
         map.addSource("chlorophyll-source", { type: "image", url: imageUrl, coordinates });
         // Inséré SOUS la trace (et les points science), même s'il est
         // chargé après elle.
-        const beforeId = map.getLayer("vela-live-track-casing") ? "vela-live-track-casing" : undefined;
+        const beforeId = map.getLayer("vela-live-track-line") ? "vela-live-track-line" : undefined;
         map.addLayer({
           id: "chlorophyll-layer", type: "raster", source: "chlorophyll-source",
           paint: { "raster-opacity": 0.75 },
@@ -243,7 +243,7 @@ window.VelaCarto = {
         map.addSource("sst-source", { type: "image", url: imageUrl, coordinates });
         // Inséré SOUS la trace (et les points science), même s'il est
         // chargé après elle.
-        const beforeId = map.getLayer("vela-live-track-casing") ? "vela-live-track-casing" : undefined;
+        const beforeId = map.getLayer("vela-live-track-line") ? "vela-live-track-line" : undefined;
         map.addLayer({
           id: "sst-layer", type: "raster", source: "sst-source",
           paint: { "raster-opacity": 0.75 },
@@ -740,8 +740,9 @@ window.VelaCarto = {
     const csvCache = new Map(); // path -> { sha, points } (en mémoire)
     let lastSignature = "";
 
+    // ANCIEN MODE (repli si track_all.csv n'existe pas encore) : un CSV par leg.
     // Retourne { livePoints }, ou null si rien n'a changé depuis le dernier appel.
-    async function loadAllTrackPoints() {
+    async function loadLegacyTrackPoints() {
       const { files, failed } = await fetchTrackFileList();
 
       let list = files;
@@ -790,6 +791,127 @@ window.VelaCarto = {
       if (livePoints.length) console.log("Dernier point :", livePoints[livePoints.length - 1].time, [livePoints[livePoints.length - 1].lon, livePoints[livePoints.length - 1].lat]);
       console.log("============================");
 
+      return { livePoints };
+    }
+
+    /* ===================== TRACE UNIQUE (track_all.csv) ===================== */
+    // Fichier fabriqué par nmea_process.py qui regroupe tous les legs.
+    // Lu via l'API GitHub "contents" en version brute, avec ETag : si le
+    // fichier n'a pas changé, GitHub répond 304 (rapide, et ne compte pas
+    // dans la limite de 60 requêtes/heure). Le contenu est gardé dans le
+    // navigateur d'une visite à l'autre.
+    const TRACK_ALL_PATH  = nmeaRootPath + "track_all.csv";
+    const FILE_CACHE_NAME = "velacarto-files-v1";
+    const memFiles = new Map(); // path -> { etag, points }
+
+    function apiContentsUrl(path) {
+      return `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`
+        + path.split("/").map(encodeURIComponent).join("/")
+        + `?ref=${branch}`;
+    }
+
+    async function openFileCache() {
+      try { if ("caches" in window) return await caches.open(FILE_CACHE_NAME); } catch(e) {}
+      return null;
+    }
+
+    async function fileCacheGet(path) {
+      const cache = await openFileCache();
+      if (!cache) return null;
+      try {
+        const hit = await cache.match(apiContentsUrl(path));
+        if (!hit) return null;
+        return { text: await hit.text(), etag: hit.headers.get("X-Vela-Etag") };
+      } catch(e) { return null; }
+    }
+
+    async function fileCachePut(path, text, etag) {
+      const cache = await openFileCache();
+      if (!cache) return;
+      try {
+        await cache.put(apiContentsUrl(path), new Response(text, {
+          headers: { "Content-Type": "text/csv; charset=utf-8", "X-Vela-Etag": etag || "" }
+        }));
+      } catch(e) { /* quota / mode privé : tant pis */ }
+    }
+
+    async function fileCacheDelete(path) {
+      const cache = await openFileCache();
+      if (cache) { try { await cache.delete(apiContentsUrl(path)); } catch(e) {} }
+    }
+
+    // Retourne { status: "same" | "new" | "missing" | "error", text, etag }
+    async function fetchRepoFile(path) {
+      const prev = memFiles.get(path);
+      const headers = { "Accept": "application/vnd.github.raw" };
+      if (prev && prev.etag) headers["If-None-Match"] = prev.etag;
+      try {
+        const r = await fetch(apiContentsUrl(path), { cache: "no-store", headers });
+        if (r.status === 304) return { status: "same" };
+        if (r.status === 404) return { status: "missing" };
+        if (r.ok) return { status: "new", text: await r.text(), etag: r.headers.get("ETag") };
+        console.warn("API GitHub :", path, r.status, "— repli sur raw.githubusercontent");
+      } catch(e) {
+        console.warn("API GitHub :", path, e, "— repli sur raw.githubusercontent");
+      }
+      // Repli (API indisponible / limite atteinte) : lien brut classique
+      const text = await fetchText(githubRawUrl(path));
+      return text ? { status: "new", text, etag: null } : { status: "error" };
+    }
+
+    function mergedPoints() {
+      return dedupeSort(Array.from(memFiles.values()).flatMap(f => f.points));
+    }
+
+    // 1) Affichage immédiat : ce que le navigateur a gardé de la dernière visite
+    async function loadTrackFromBrowserCache() {
+      for (const path of [TRACK_ALL_PATH, mainTrackPath]) {
+        const c = await fileCacheGet(path);
+        if (c && c.text) memFiles.set(path, { etag: c.etag || null, points: parseTrackCSV(c.text, path) });
+      }
+      if (!memFiles.has(TRACK_ALL_PATH)) { memFiles.clear(); return null; }
+      return { livePoints: mergedPoints() };
+    }
+
+    // 2) Vérification GitHub. Retourne { livePoints }, ou null si rien n'a changé.
+    let useLegacy = false;
+    const missingPaths = new Set(); // fichiers absents : plus redemandés avant le prochain chargement de page
+
+    async function loadAllTrackPoints() {
+      if (useLegacy) return loadLegacyTrackPoints();
+
+      const paths = [TRACK_ALL_PATH, mainTrackPath].filter(p => !missingPaths.has(p));
+      const results = await Promise.all(paths.map(fetchRepoFile));
+
+      if (paths[0] === TRACK_ALL_PATH && results[0].status === "missing") {
+        // track_all.csv pas encore généré : ancien mode, un CSV par leg
+        console.warn("track_all.csv absent — chargement leg par leg (ancien mode).");
+        useLegacy = true;
+        memFiles.clear();
+        return loadLegacyTrackPoints();
+      }
+
+      let changed = false;
+      for (let i = 0; i < paths.length; i++) {
+        const path = paths[i], res = results[i];
+        if (res.status === "new") {
+          memFiles.set(path, { etag: res.etag, points: parseTrackCSV(res.text, path) });
+          if (res.etag) fileCachePut(path, res.text, res.etag); else fileCacheDelete(path);
+          changed = true;
+        } else if (res.status === "missing") {
+          missingPaths.add(path);
+          if (memFiles.has(path)) { memFiles.delete(path); fileCacheDelete(path); changed = true; }
+        }
+        // "same" : rien à faire ; "error" : on garde ce qu'on a
+      }
+      if (!changed) return null;
+
+      const livePoints = mergedPoints();
+      console.log("===== VELA CARTO DEBUG =====");
+      console.table(Array.from(memFiles.entries()).map(([p, f]) => ({ fichier: p, points: f.points.length })));
+      console.log("Points live :", livePoints.length);
+      if (livePoints.length) console.log("Dernier point :", livePoints[livePoints.length - 1].time);
+      console.log("============================");
       return { livePoints };
     }
 
@@ -1344,6 +1466,12 @@ window.VelaCarto = {
           swatch = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;
             background:${row.color};margin-right:7px;flex-shrink:0;vertical-align:middle;
             border:1.5px solid ${strokeColor}"></span>`;
+        } else if (row.keys.includes("ctd_keel")) {
+          // trait blanc avec un fin trait bleu au milieu (comme sur la carte)
+          swatch = `<span style="display:inline-block;width:16px;height:4px;background:#ffffff;
+            border-radius:2px;margin-right:7px;flex-shrink:0;vertical-align:middle;
+            position:relative;"><span style="position:absolute;left:0;right:0;top:1.25px;height:1.5px;
+            background:${row.color};"></span></span>`;
         } else {
           swatch = `<span style="display:inline-block;width:16px;height:3px;background:${row.color};
             border-radius:2px;margin-right:7px;flex-shrink:0;vertical-align:middle;"></span>`;
@@ -1527,13 +1655,8 @@ window.VelaCarto = {
 
     let refreshing = false;
 
-    async function refreshLiveTrack() {
-      if (refreshing) return;          // évite 2 rafraîchissements en parallèle
-      refreshing = true;
-      try {
-        const res = await loadAllTrackPoints();
-        if (!res) return;              // rien n'a changé sur GitHub : on ne touche à rien
-
+    // Affiche un nouveau jeu de points (trace, science, bateau, panneau nav)
+    function applyPoints(res) {
         // Garder la position du curseur si l'utilisateur remonte le temps
         const wasAtEnd = !hourlyPts.length || sliderIdx >= hourlyPts.length - 1;
         const prevMs   = hourlyPts.length ? hourlyPts[sliderIdx].timestampMs : null;
@@ -1556,6 +1679,14 @@ window.VelaCarto = {
         updateBoatUI();
 
         window.dispatchEvent(new Event("velacarto:pointsready"));
+    }
+
+    async function refreshLiveTrack() {
+      if (refreshing) return;          // évite 2 rafraîchissements en parallèle
+      refreshing = true;
+      try {
+        const res = await loadAllTrackPoints();
+        if (res) applyPoints(res);     // null = rien n'a changé sur GitHub
       } catch(e) {
         console.warn("Refresh trace :", e);
       } finally {
@@ -1569,32 +1700,30 @@ window.VelaCarto = {
 
       // Chlorophylle / température : chargées à la demande (au 1er clic sur
       // le bouton du fond), et insérées sous la trace — voir ensureOverlay().
+      // Vent : ajouté APRÈS la trace (voir plus bas), c'est la couche la plus lourde.
 
-      try {
-        if (map.getLayer("Water")) {
-          map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
-          map.addLayer(windLayer, "Water");
-        } else {
-          map.addLayer(windLayer);
-        }
-      } catch(e) { console.warn("Couche vent :", e); }
+      function addWindLayer() {
+        try {
+          if (map.getLayer("wind-layer")) return;
+          if (map.getLayer("Water")) {
+            map.setPaintProperty("Water", "fill-color", "rgba(0,0,0,0.2)");
+            map.addLayer(windLayer, "Water");
+          } else {
+            map.addLayer(windLayer);
+          }
+        } catch(e) { console.warn("Couche vent :", e); }
+        setBaseLayer(activeBaseLayer); // applique la visibilité du fond choisi
+      }
 
       // Synchronise l'état visuel du sélecteur avec les couches (Vent actif par défaut)
       setBaseLayer(activeBaseLayer);
 
       /* ---- Tracé principal ---- */
       map.addSource("vela-live-track", { type: "geojson", data: EMPTY_FC });
-      // Trait blanc (bord)…
-      map.addLayer({
-        id: "vela-live-track-casing", type: "line", source: "vela-live-track",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ffffff", "line-width": TRACK_WHITE_WIDTH, "line-opacity": 1 }
-      });
-      // …avec un trait bleu au milieu
       map.addLayer({
         id: "vela-live-track-line", type: "line", source: "vela-live-track",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": TRACK_BLUE_COLOR, "line-width": TRACK_BLUE_WIDTH, "line-opacity": 1 }
+        paint: { "line-color": "#ffffff", "line-width": TRACK_WIDTH, "line-opacity": 1 }
       });
 
       /* ---- Layers science continues ---- */
@@ -1603,7 +1732,12 @@ window.VelaCarto = {
         map.addLayer({
           id: `sci-ct-${k}-line`, type: "line", source: `sci-ct-${k}`,
           layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": cfg.color, "line-width": isMini ? 3 : 5, "line-opacity": 0.9 }
+          // CTD quille : trait bleu FIN au milieu de la trace blanche.
+          // Pompage inline : trait épais (inchangé). La CTD est ajoutée après
+          // l'inline, donc son trait bleu reste visible par-dessus.
+          paint: k === "ctd_keel"
+            ? { "line-color": cfg.color, "line-width": CTD_KEEL_WIDTH, "line-opacity": 1 }
+            : { "line-color": cfg.color, "line-width": isMini ? 3 : 5, "line-opacity": 0.9 }
         });
       });
 
@@ -1749,7 +1883,19 @@ window.VelaCarto = {
       });
 
       /* ---- Premier chargement + auto-refresh ---- */
-      await refreshLiveTrack();
+      // 1) Affichage immédiat de la trace gardée par le navigateur (visite précédente)
+      try {
+        const cached = await loadTrackFromBrowserCache();
+        if (cached && cached.livePoints.length) applyPoints(cached);
+      } catch(e) { console.warn("Cache navigateur :", e); }
+
+      // 2) Vérification GitHub en arrière-plan ; le vent démarre dès que la
+      //    trace est là (ou au bout de 1,5 s au plus tard)
+      const firstRefresh = refreshLiveTrack();
+      await Promise.race([firstRefresh, new Promise(r => setTimeout(r, 1500))]);
+      addWindLayer();
+      await firstRefresh;
+
       if (enableAutoRefresh && refreshMs > 0) window.setInterval(refreshLiveTrack, refreshMs);
 
       // Fonds chlorophylle / température : données quotidiennes, on ne les
