@@ -1096,7 +1096,7 @@ window.VelaCarto = {
     let baseLayerControl  = null;
     let chloroColorbar    = null;
     let sstColorbar       = null;
-    let activeBaseLayer   = "wind"; // "wind" | "chloro" | "sst"
+    let activeBaseLayer   = "wind"; // "wind" | "chloro" | "sst" | "sat"
     let blcCollapsed      = false; // état replié du sélecteur "Fond de carte"
 
     // Affiche/masque widgets + colorbars selon la couche active ET l'état
@@ -1121,6 +1121,33 @@ window.VelaCarto = {
       }
     }
 
+    /* ---- Fond satellite (MapTiler) ---- */
+    // Ajouté seulement au 1er clic sur "Satellite" (aucune tuile téléchargée
+    // avant). Placé sous les noms de lieux du fond de carte s'il y en a, et
+    // toujours sous la trace et les points science.
+    const SATELLITE_TILEJSON = () =>
+      `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${maptilersdk.config.apiKey}`;
+
+    function ensureSatelliteLayer() {
+      if (map.getLayer("satellite-layer")) return;
+      if (!map.getSource("satellite-source")) {
+        map.addSource("satellite-source", { type: "raster", url: SATELLITE_TILEJSON(), tileSize: 512 });
+      }
+      let beforeId;
+      try {
+        const styleLayers = (map.getStyle() && map.getStyle().layers) || [];
+        const firstLabel  = styleLayers.find(l => l.type === "symbol");
+        beforeId = firstLabel ? firstLabel.id
+                 : (map.getLayer("vela-live-track-line") ? "vela-live-track-line" : undefined);
+      } catch(e) {
+        beforeId = map.getLayer("vela-live-track-line") ? "vela-live-track-line" : undefined;
+      }
+      map.addLayer({
+        id: "satellite-layer", type: "raster", source: "satellite-source",
+        layout: { visibility: "visible" }
+      }, beforeId);
+    }
+
     function setBaseLayer(layer) {
       activeBaseLayer = layer;
       try {
@@ -1138,6 +1165,12 @@ window.VelaCarto = {
           map.setLayoutProperty("sst-layer", "visibility", layer === "sst" ? "visible" : "none");
         }
       } catch(e) { /* layer pas encore prête */ }
+      try {
+        if (layer === "sat") ensureSatelliteLayer();
+        if (map.getLayer("satellite-layer")) {
+          map.setLayoutProperty("satellite-layer", "visibility", layer === "sat" ? "visible" : "none");
+        }
+      } catch(e) { /* carte pas encore prête */ }
 
       applyLayerVisuals(layer);
       resetHoverWidgets();
@@ -1147,7 +1180,7 @@ window.VelaCarto = {
     if (!isMini) {
       baseLayerControl = document.createElement("div");
       Object.assign(baseLayerControl.style, {
-        position: "absolute", bottom: "64px", right: "12px", width: "282px",
+        position: "absolute", bottom: "64px", right: "12px", width: isMobile ? "200px" : "360px",
         background: "rgba(95,125,149,0.45)", backdropFilter: "blur(8px)",
         borderRadius: "10px", padding: "4px 6px 6px 6px",
         boxShadow: "0 2px 14px rgba(0,0,0,0.3)",
@@ -1162,7 +1195,7 @@ window.VelaCarto = {
             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
             style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
-        <div id="blc-body" style="display:flex;gap:4px;">
+        <div id="blc-body" style="display:grid;grid-template-columns:repeat(${isMobile ? 2 : 4},1fr);gap:4px;">
           <button data-layer="wind" style="flex:1;min-width:0;border:1px solid rgba(255,255,255,0.35);border-radius:7px;padding:6px 2px;
             cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -1175,6 +1208,10 @@ window.VelaCarto = {
             cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
             transition:background .15s,color .15s,box-shadow .15s,border-color .15s;">Température</button>
+          <button data-layer="sat" style="flex:1;min-width:0;border:1px solid rgba(255,255,255,0.35);border-radius:7px;padding:6px 2px;
+            cursor:pointer;font:inherit;color:#dde6f0;background:transparent;text-align:center;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            transition:background .15s,color .15s,box-shadow .15s,border-color .15s;">Satellite</button>
         </div>
       `;
       document.getElementById("map").appendChild(baseLayerControl);
@@ -1190,7 +1227,7 @@ window.VelaCarto = {
       }
       blcHeader.addEventListener("click", () => {
         const collapsed = blcBody.style.display === "none";
-        blcBody.style.display  = collapsed ? "flex" : "none";
+        blcBody.style.display  = collapsed ? "grid" : "none";
         blcIcon.style.transform = collapsed ? "rotate(0deg)" : "rotate(-90deg)";
         blcCollapsed = !collapsed;
         applyLayerVisuals(activeBaseLayer); // masque/réaffiche la colorbar en conséquence
