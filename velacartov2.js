@@ -1647,109 +1647,17 @@ window.VelaCarto = {
 
       // Hypernet : points espacés d'1 mille nautique, avec repli sur
       // station_hyp quand "hypernet on/off" n'a pas été loggé.
-      sciBase.hypernet = sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC;
+      const srcH = map.getSource("sci-pt-hypernet");
+      if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
       // Station biologie : 1 point par station, qu'elle ait été loggée avec
       // "station bio on" (nouveau) ou seulement "net on" (anciennes stations)
-      sciBase.bio = sciVis.net ? buildBioGeoJSON(slice) : EMPTY_FC;
+      const srcN = map.getSource("sci-pt-net");
+      if (srcN) srcN.setData(sciVis.net ? buildBioGeoJSON(slice) : EMPTY_FC);
 
-      sciBase.ctd = sciVis.ctd_profile ? buildPtGeoJSON(slice, ["ctd_profile","ctd_intercomp"]) : EMPTY_FC;
-
-      applySpread(true);
+      const srcC = map.getSource("sci-pt-ctd");
+      if (srcC) srcC.setData(sciVis.ctd_profile ? buildPtGeoJSON(slice, ["ctd_profile","ctd_intercomp"]) : EMPTY_FC);
     }
-
-    /* ===================== ÉCARTEMENT DES STATIONS PROCHES ===================== */
-    // Au dézoom, une station biologie et une station hyperspectrale (ou CTD)
-    // faites au même endroit se superposent et une seule reste visible.
-    // À chaque niveau de zoom, on cherche les points qui se touchent À
-    // L'ÉCRAN ; seuls ceux qui touchent un point d'une AUTRE couleur sont
-    // légèrement décalés, pour apparaître côte à côte. Les points isolés, ou
-    // proches seulement de points de même couleur, ne bougent pas. À partir
-    // du zoom SPREAD_NONE_ZOOM, plus aucun décalage (positions exactes).
-    const SPREAD_SCALE     = isMini ? 0.75 : 1;
-    const SPREAD = {                                     // décalage [x, y] en pixels
-      hypernet: [-6 * SPREAD_SCALE,  3 * SPREAD_SCALE],  // à gauche
-      bio     : [ 6 * SPREAD_SCALE,  3 * SPREAD_SCALE],  // à droite
-      ctd     : [ 0,                -7 * SPREAD_SCALE]   // au-dessus
-    };
-    const SPREAD_RADIUS_PX = 10 * SPREAD_SCALE;  // distance à l'écran sous laquelle 2 points "se touchent"
-    const SPREAD_NONE_ZOOM = 11;
-
-    const SCI_SRC = { hypernet: "sci-pt-hypernet", bio: "sci-pt-net", ctd: "sci-pt-ctd" };
-    const sciBase = { hypernet: EMPTY_FC, bio: EMPTY_FC, ctd: EMPTY_FC }; // positions exactes
-
-    // Coordonnées "monde" en pixels au zoom z (projection de la carte, tuiles 512 px)
-    function lngLatToWorld(lon, lat, z) {
-      const size = 512 * Math.pow(2, z);
-      const sin  = Math.sin(lat * Math.PI / 180);
-      return [(lon + 180) / 360 * size,
-              (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size];
-    }
-    function worldToLngLat(x, y, z) {
-      const size = 512 * Math.pow(2, z);
-      const n = Math.PI - 2 * Math.PI * y / size;
-      return [x / size * 360 - 180, 180 / Math.PI * Math.atan(Math.sinh(n))];
-    }
-
-    function setSciSource(kind, fc) {
-      const src = map.getSource(SCI_SRC[kind]);
-      if (src) src.setData(fc);
-    }
-
-    let lastSpreadKey = null;
-    function applySpread(force = false) {
-      const z   = map.getZoom();
-      const key = z >= SPREAD_NONE_ZOOM ? "exact" : Math.round(z * 4) / 4; // recalcul tous les 0,25 zoom
-      if (!force && key === lastSpreadKey) return;
-      lastSpreadKey = key;
-
-      const kinds = Object.keys(SCI_SRC);
-      if (key === "exact") { kinds.forEach(k => setSciSource(k, sciBase[k])); return; }
-
-      // Grille en pixels pour trouver vite les voisins
-      const cell = SPREAD_RADIUS_PX;
-      const grid = new Map();
-      const proj = {};
-      kinds.forEach(k => {
-        proj[k] = sciBase[k].features.map(f => {
-          const [x, y] = lngLatToWorld(f.geometry.coordinates[0], f.geometry.coordinates[1], key);
-          const gk = `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
-          if (!grid.has(gk)) grid.set(gk, []);
-          grid.get(gk).push({ k, x, y });
-          return [x, y];
-        });
-      });
-
-      const r2 = SPREAD_RADIUS_PX * SPREAD_RADIUS_PX;
-      kinds.forEach(k => {
-        const features = sciBase[k].features.map((f, i) => {
-          const [x, y] = proj[k][i];
-          const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
-          let touchesOther = false;
-          for (let dx = -1; dx <= 1 && !touchesOther; dx++) {
-            for (let dy = -1; dy <= 1 && !touchesOther; dy++) {
-              const bucket = grid.get(`${cx + dx},${cy + dy}`);
-              if (!bucket) continue;
-              for (const q of bucket) {
-                if (q.k !== k && (q.x - x) ** 2 + (q.y - y) ** 2 <= r2) { touchesOther = true; break; }
-              }
-            }
-          }
-          if (!touchesOther) return f;                     // pas de voisin d'une autre couleur
-          const [ox, oy] = SPREAD[k];
-          return { ...f, geometry: { type: "Point", coordinates: worldToLngLat(x + ox, y + oy, key) } };
-        });
-        setSciSource(k, { type: "FeatureCollection", features });
-      });
-    }
-
-    // Recalcul pendant le zoom (limité à ~6 fois par seconde) et à la fin
-    let spreadTimer = null;
-    map.on("zoom", () => {
-      if (spreadTimer) return;
-      spreadTimer = setTimeout(() => { spreadTimer = null; applySpread(); }, 150);
-    });
-    map.on("zoomend", () => applySpread());
 
     function renderAll() { renderTrack(); renderScience(); }
 
@@ -1979,6 +1887,13 @@ window.VelaCarto = {
           "circle-stroke-color"  : STROKE_COLORS.ctd_profile
         }
       });
+      /* ---- Ordre d'affichage des stations ---- */
+      // Quand des points se superposent, le vert (biologie) et le violet
+      // (CTD) passent TOUJOURS au-dessus du jaune (hyperspectrale).
+      ["sci-pt-net-circle", "sci-pt-ctd-circle"].forEach(id => {
+        try { if (map.getLayer(id)) map.moveLayer(id); } catch(e) {}
+      });
+
       /* ===================== MARQUEUR BATEAU ===================== */
 
       const boatSize = isMini ? 30 : 45;
