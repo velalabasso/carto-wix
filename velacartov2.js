@@ -113,7 +113,9 @@ window.VelaCarto = {
     // Colonne supplémentaire lue dans le CSV, en plus de ALL_SCIENCE :
     // état brut des stations HYP (ON/OFF), utilisé uniquement comme repli
     // d'affichage pour les points Hypernet — ne génère pas de layer propre.
-    const EXTRA_COLS = ["station_hyp"];
+    // station_bio : état STATION BIO ON/OFF — c'est lui qui place les points
+    // "Station biologie" (qu'il y ait eu un filet, une filtration ou un bucket).
+    const EXTRA_COLS = ["station_hyp", "station_bio"];
 
     const sciVis = {};
     ALL_SCIENCE.forEach(k => sciVis[k] = true);
@@ -1367,7 +1369,8 @@ window.VelaCarto = {
           <svg id="vn-toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c8dcea" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="vn-body">
-        <div><span style="color:#c8dcea">Date</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
+        <div><span id="vn-date-label" style="color:#c8dcea">Dernière position</span>&nbsp;&nbsp;<strong id="vn-date">—</strong></div>
+        <div id="vn-ago" style="color:#c8dcea;font-size:11px;line-height:1.3;margin:-2px 0 2px 0;">—</div>
         <div><span style="color:#c8dcea">Temps</span>&nbsp;<strong id="vn-elapsed">—</strong></div>
         <div><span style="color:#c8dcea">Distance</span>&nbsp;<strong id="vn-miles">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">nm</span></div>
         <div><span style="color:#c8dcea">Vitesse</span>&nbsp;&nbsp;<strong id="vn-sog">—</strong>&nbsp;<span style="color:#c8dcea;font-size:11px">kn</span></div>
@@ -1403,7 +1406,30 @@ window.VelaCarto = {
 
     const DISTANCE_OFFSET_NM = 150;
 
-    function updateNavPanel(p, miles) {
+    // "il y a 12 min", "il y a 3 h", "il y a 2 j"
+    function formatAgo(ms) {
+      if (!isFinite(ms)) return "—";
+      if (ms < 0) ms = 0;
+      const min = Math.floor(ms / 60000);
+      if (min < 1)   return "à l'instant";
+      if (min < 60)  return `il y a ${min} min`;
+      const h = Math.floor(min / 60);
+      if (h < 48)    return `il y a ${h} h`;
+      return `il y a ${Math.floor(h / 24)} j`;
+    }
+
+    // Ligne "il y a …" : seulement quand le curseur est sur la dernière position
+    let navLastPointMs = null;
+    function updateNavAgo() {
+      const agoEl = document.getElementById("vn-ago");
+      if (!agoEl) return;
+      if (navLastPointMs === null) { agoEl.style.display = "none"; return; }
+      agoEl.style.display = "";
+      agoEl.textContent = formatAgo(Date.now() - navLastPointMs);
+    }
+    setInterval(updateNavAgo, 60000); // se met à jour toute seule chaque minute
+
+    function updateNavPanel(p, miles, isLast = true) {
       if (!navPanel || !p) return;
       const d = new Date(p.time);
       const dateStr = d.toLocaleString("fr-FR", {
@@ -1411,6 +1437,10 @@ window.VelaCarto = {
         hour: "2-digit", minute: "2-digit", timeZone: "UTC"
       }) + " UTC";
       document.getElementById("vn-date").textContent    = dateStr;
+      const dateLbl = document.getElementById("vn-date-label");
+      if (dateLbl) dateLbl.textContent = isLast ? "Dernière position" : "Date";
+      navLastPointMs = isLast ? p.timestampMs : null;
+      updateNavAgo();
       document.getElementById("vn-sog").textContent     = isFinite(p.sog)    ? p.sog.toFixed(1)    : "—";
       document.getElementById("vn-tws").textContent     = isFinite(p.tws)    ? p.tws.toFixed(1)    : "—";
 
@@ -1568,7 +1598,8 @@ window.VelaCarto = {
       if (srcH) srcH.setData(sciVis.hypernet ? buildHypernetGeoJSON(slice) : EMPTY_FC);
 
       const srcN = map.getSource("sci-pt-net");
-      if (srcN) srcN.setData(sciVis.net ? buildPtGeoJSON(slice, ["net"]) : EMPTY_FC);
+      // Station biologie : 1 point à chaque "station bio on"
+      if (srcN) srcN.setData(sciVis.net ? buildPtGeoJSON(slice, ["station_bio"]) : EMPTY_FC);
 
       const srcC = map.getSource("sci-pt-ctd");
       if (srcC) srcC.setData(sciVis.ctd_profile ? buildPtGeoJSON(slice, ["ctd_profile","ctd_intercomp"]) : EMPTY_FC);
@@ -1592,7 +1623,7 @@ window.VelaCarto = {
       }
 
       const milesDone = milesAtTimestamp(p.timestampMs);
-      updateNavPanel(p, milesDone);
+      updateNavPanel(p, milesDone, sliderIdx >= hourlyPts.length - 1);
 
       if (timeLabel) {
         const d = new Date(p.time);
